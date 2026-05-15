@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [584b80f] — 2026-05-15
+
+**feat(domain): add Session bounded context**
+
+> what: Session aggregate with SkillUsageRecord tracking, session lifecycle, and audit events
+> why: sessions provide traceability of agent work and skill usage for analytics and debugging
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/entity/Session.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/entity/SkillUsageRecord.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/event/SessionClosed.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/event/SessionStarted.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/event/SkillQueried.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/repository/SessionRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/valueobject/SessionId.java`
+
+---
+
 ### [808bce9] — 2026-05-15
 
 **feat(domain): add Memory bounded context**
