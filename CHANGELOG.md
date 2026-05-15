@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [9f8dd17] — 2026-05-15
+
+**feat(domain): add Access bounded context**
+
+> what: UserProjectRole, UserPreference, and UserPrivateSkill entities with role/preference management
+> why: access control enables per-user skill filtering, project roles, and private skill ownership
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/entity/UserPreference.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/entity/UserPrivateSkill.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/entity/UserProjectRole.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/event/PreferenceConfigured.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/event/PrivateSkillAdded.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/event/RoleGranted.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/repository/UserPreferenceRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/repository/UserPrivateSkillRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/repository/UserProjectRoleRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/PreferenceId.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/Role.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/SelectionMode.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/UserPrivateSkillId.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/UserProjectRoleId.java`
+
+---
+
 ### [584b80f] — 2026-05-15
 
 **feat(domain): add Session bounded context**
