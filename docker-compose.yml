@@ -1,0 +1,22 @@
+services:
+  oracle:
+    image: gvenzl/oracle-free:23.7-slim
+    container_name: oracle-23ai
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: Oracle23ai!
+      APP_USER: mcp_user
+      APP_USER_PASSWORD: Mcp_User23!
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./docker/oracle/init:/container-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+
+volumes:
+  oracle-data:
