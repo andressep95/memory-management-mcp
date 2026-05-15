@@ -386,3 +386,53 @@ CREATE INDEX idx_session_skill_usage_sess   ON session_skill_usage (session_id, 
 -- memory_changes: busqueda por proyecto y rama
 CREATE INDEX idx_memory_changes_project     ON memory_changes (project_id, created_at DESC);
 CREATE INDEX idx_memory_changes_commit      ON memory_changes (commit_hash);
+
+
+-- ============================================================
+-- DOCUMENTS  —  Knowledge base: documentación del proyecto indexada
+-- ============================================================
+CREATE TABLE documents (
+    id                   RAW(16)                             DEFAULT SYS_GUID() NOT NULL,
+    project_id           RAW(16)                             NOT NULL,
+    source_path          VARCHAR2(1000)                      NOT NULL,
+    title                VARCHAR2(500)                       NOT NULL,
+    doc_type             VARCHAR2(50)                        NOT NULL,
+    content              CLOB                                NOT NULL,
+    embedding            VECTOR(384, FLOAT32)               ,
+    indexed_at           TIMESTAMP WITH TIME ZONE            DEFAULT SYSTIMESTAMP NOT NULL,
+    source_modified_at   TIMESTAMP WITH TIME ZONE            NOT NULL,
+    stale                NUMBER(1)                           DEFAULT 0 NOT NULL,
+    CONSTRAINT pk_documents PRIMARY KEY (id),
+    CONSTRAINT fk_documents_project FOREIGN KEY (project_id) REFERENCES projects (id),
+    CONSTRAINT uk_documents_path UNIQUE (project_id, source_path),
+    CONSTRAINT ck_documents_stale CHECK (stale IN (0, 1)),
+    CONSTRAINT ck_documents_type CHECK (doc_type IN (
+        'ADR', 'API_SPEC', 'RUNBOOK', 'GUIDE', 'README', 'CHANGELOG', 'ONBOARDING', 'DESIGN', 'OTHER'
+    ))
+);
+
+
+-- ============================================================
+-- DOCUMENT_SECTIONS  —  Secciones con embedding individual para RAG granular
+-- ============================================================
+CREATE TABLE document_sections (
+    id                   RAW(16)                             DEFAULT SYS_GUID() NOT NULL,
+    document_id          RAW(16)                             NOT NULL,
+    heading              VARCHAR2(500)                       NOT NULL,
+    content              CLOB                                NOT NULL,
+    embedding            VECTOR(384, FLOAT32)               ,
+    position             NUMBER(5)                           NOT NULL,
+    indexed_at           TIMESTAMP WITH TIME ZONE            DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT pk_document_sections PRIMARY KEY (id),
+    CONSTRAINT fk_doc_sections_doc FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+);
+
+
+-- ── Indexes for Knowledge ───────────────────────────────────
+
+-- documents: búsqueda por proyecto y tipo
+CREATE INDEX idx_documents_project          ON documents (project_id, doc_type);
+CREATE INDEX idx_documents_stale            ON documents (project_id, stale);
+
+-- document_sections: lookup por documento
+CREATE INDEX idx_doc_sections_doc           ON document_sections (document_id, position);

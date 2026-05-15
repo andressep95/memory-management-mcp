@@ -11,7 +11,7 @@ MCP (Model Context Protocol) server that provides semantic memory, skill catalog
 
 ## Architecture
 
-Clean Architecture + DDD with 6 bounded contexts:
+Clean Architecture + DDD with 7 bounded contexts:
 
 | Context | Responsibility |
 |---------|---------------|
@@ -19,6 +19,7 @@ Clean Architecture + DDD with 6 bounded contexts:
 | Project | Groups skills and memory per codebase |
 | Skill | Global skill catalog with RAG chunks |
 | Memory | Commit diffs indexed as vector embeddings |
+| Knowledge | Project documentation as searchable knowledge base |
 | Session | Agent work sessions and skill usage audit |
 | Access | Roles, private skills, user preferences |
 
@@ -46,6 +47,7 @@ src/main/java/com/cloudcentinel/memory_management_mcp/
 │   ├── project/     # Project entity, ProjectSkill, repository port
 │   ├── skill/       # Skill entity, SkillChunk, embedding VOs
 │   ├── memory/      # MemoryChange entity, commit indexing
+│   ├── knowledge/   # Document entity, DocumentSection, semantic doc search
 │   ├── session/     # Session entity, SkillUsageRecord
 │   └── access/      # UserProjectRole, UserPreference, UserPrivateSkill
 docker/oracle/init/  # DDL schema for Oracle 23ai
