@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.4.5</version>
+		<relativePath/>
+	</parent>
+
+	<groupId>com.cloudcentinel</groupId>
+	<artifactId>memory-management-mcp</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>memory-management-mcp</name>
+	<description>MCP Agent Server — Memory and Skills for AI agents using Oracle 23ai and DJL</description>
+
+	<properties>
+		<java.version>17</java.version>
+		<spring-ai.version>1.0.0</spring-ai.version>
+		<djl.version>0.26.0</djl.version>
+	</properties>
+
+	<dependencies>
+
+		<!-- ===== WEB / MCP TRANSPORT ===== -->
+		<!--
+			Solo WebFlux: evita conflicto entre WebMVC y WebFlux en el mismo contexto.
+			Los endpoints REST del dashboard también se implementan con WebFlux (RouterFunction).
+			SSE para el transporte MCP requiere WebFlux obligatoriamente.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
+		<!-- MCP Server con transporte SSE sobre WebFlux -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
+		</dependency>
+
+		<!-- ===== PERSISTENCIA ===== -->
+		<!-- JPA: entidades para sesiones, roles, preferencias -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<!-- JDBC Template: control directo de SQL para batch processing (Caso 3) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jdbc</artifactId>
+		</dependency>
+		<!-- Driver Oracle 23ai — versión gestionada por Spring Boot BOM -->
+		<dependency>
+			<groupId>com.oracle.database.jdbc</groupId>
+			<artifactId>ojdbc11</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- ===== ORACLE 23ai VECTOR STORE (Spring AI) ===== -->
+		<!-- Puente entre EmbeddingModel de Spring AI y columnas VECTOR de Oracle -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-vector-store-oracle</artifactId>
+		</dependency>
+
+		<!-- ===== EMBEDDINGS LOCALES (DJL — sin Python, sin internet en runtime) ===== -->
+		<!-- Motor de inferencia de modelos en Java puro -->
+		<dependency>
+			<groupId>ai.djl</groupId>
+			<artifactId>api</artifactId>
+			<version>${djl.version}</version>
+		</dependency>
+		<!-- Engine PyTorch para modelos como multilingual-e5-small (384 dims) -->
+		<dependency>
+			<groupId>ai.djl.pytorch</groupId>
+			<artifactId>pytorch-engine</artifactId>
+			<version>${djl.version}</version>
+			<scope>runtime</scope>
+		</dependency>
+		<!-- Soporte tokenizer de Hugging Face (necesario para modelos E5/BERT) -->
+		<dependency>
+			<groupId>ai.djl.huggingface</groupId>
+			<artifactId>tokenizers</artifactId>
+			<version>${djl.version}</version>
+		</dependency>
+
+		<!-- ===== OBSERVABILIDAD ===== -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!-- ===== TEST ===== -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+	</dependencies>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

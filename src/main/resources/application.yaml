@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: memory-management-mcp
+
+  datasource:
+    url: jdbc:oracle:thin:@localhost:1521/FREEPDB1
+    username: mcp_user
+    password: Mcp_User23!
+    driver-class-name: oracle.jdbc.OracleDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    database-platform: org.hibernate.dialect.OracleDialect
+    show-sql: false
+
+  ai:
+    mcp:
+      server:
+        name: memory-management-mcp
+        version: 0.0.1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
