@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [808bce9] — 2026-05-15
+
+**feat(domain): add Memory bounded context**
+
+> what: MemoryChange entity with commit diff indexing, vector embedding assignment, and CommitIndexed event
+> why: memory changes are the semantic index of project history for RAG-based code recall
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/entity/MemoryChange.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/event/CommitIndexed.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/MemoryChangeRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/ScoredMemoryChange.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/valueobject/ChangeIntent.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/valueobject/CommitHash.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/valueobject/MemoryChangeId.java`
+
+---
+
 ### [60b230b] — 2026-05-15
 
 **feat(domain): add Skill bounded context**
