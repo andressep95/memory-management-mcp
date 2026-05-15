@@ -436,3 +436,27 @@ CREATE INDEX idx_documents_stale            ON documents (project_id, stale);
 
 -- document_sections: lookup por documento
 CREATE INDEX idx_doc_sections_doc           ON document_sections (document_id, position);
+
+
+-- ── Comments for Knowledge ──────────────────────────────────
+
+COMMENT ON TABLE  documents                    IS 'Knowledge base del proyecto. Cada fila es un documento indexado con embedding para busqueda semantica.';
+COMMENT ON COLUMN documents.id                 IS 'PK generado por Oracle (SYS_GUID). RAW(16) equivale a UUID.';
+COMMENT ON COLUMN documents.project_id         IS 'FK al proyecto al que pertenece este documento.';
+COMMENT ON COLUMN documents.source_path        IS 'Ruta relativa del archivo fuente dentro del repositorio (ej: docs/architecture.md).';
+COMMENT ON COLUMN documents.title              IS 'Titulo del documento extraido del contenido o del nombre del archivo.';
+COMMENT ON COLUMN documents.doc_type           IS 'Tipo de documento: ADR, API_SPEC, RUNBOOK, GUIDE, README, CHANGELOG, ONBOARDING, DESIGN, OTHER.';
+COMMENT ON COLUMN documents.content            IS 'Contenido completo del documento en texto plano o markdown.';
+COMMENT ON COLUMN documents.embedding          IS 'Vector de 384 dimensiones (multilingual-e5-small) del contenido completo.';
+COMMENT ON COLUMN documents.indexed_at         IS 'Timestamp de la ultima indexacion del documento.';
+COMMENT ON COLUMN documents.source_modified_at IS 'Timestamp de la ultima modificacion del archivo fuente.';
+COMMENT ON COLUMN documents.stale              IS '1 = documento potencialmente desactualizado respecto a cambios recientes, 0 = vigente.';
+
+COMMENT ON TABLE  document_sections            IS 'Secciones individuales de un documento con embedding propio para RAG granular por heading.';
+COMMENT ON COLUMN document_sections.id         IS 'PK generado por Oracle (SYS_GUID). RAW(16) equivale a UUID.';
+COMMENT ON COLUMN document_sections.document_id IS 'FK al documento padre. CASCADE en delete.';
+COMMENT ON COLUMN document_sections.heading    IS 'Heading o titulo de la seccion dentro del documento.';
+COMMENT ON COLUMN document_sections.content    IS 'Contenido de la seccion en texto plano o markdown.';
+COMMENT ON COLUMN document_sections.embedding  IS 'Vector de 384 dimensiones (multilingual-e5-small) del contenido de la seccion.';
+COMMENT ON COLUMN document_sections.position   IS 'Orden de la seccion dentro del documento (0-based).';
+COMMENT ON COLUMN document_sections.indexed_at IS 'Timestamp de la ultima indexacion de esta seccion.';
