@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [60b230b] — 2026-05-15
+
+**feat(domain): add Skill bounded context**
+
+> what: Skill aggregate with SkillChunk sub-entities, EmbeddingVector VO, and RAG sync events
+> why: skills are the core knowledge units indexed for semantic search by AI agents
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/entity/Skill.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/entity/SkillChunk.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/event/SkillChunkSynced.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/event/SkillSynced.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/repository/ScoredChunk.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/repository/ScoredSkill.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/repository/SkillRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/valueobject/ChunkName.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/valueobject/EmbeddingVector.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/valueobject/SkillContent.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/valueobject/SkillId.java`
+
+---
+
 ### [8ea823c] — 2026-05-15
 
 **feat(domain): add Project bounded context**
