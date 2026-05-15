@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [73686e2] — 2026-05-15
+
+**feat(domain): add Knowledge bounded context**
+
+> what: Document aggregate with section-level chunking, staleness tracking, and semantic search port
+> why: enables project documentation as a searchable knowledge base for agents and frontend consumption
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/entity/Document.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/entity/DocumentSection.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/event/DocumentIndexed.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/event/DocumentMarkedStale.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/event/DocumentUpdated.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/repository/DocumentRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/repository/ScoredDocument.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/repository/ScoredSection.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/valueobject/DocumentContent.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/valueobject/DocumentId.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/valueobject/DocumentType.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/valueobject/SourcePath.java`
+
+#### Changed
+
+- `README.md`
+- `docker/oracle/init/01-schema.sql`
+
+---
+
 ### [9f8dd17] — 2026-05-15
 
 **feat(domain): add Access bounded context**
