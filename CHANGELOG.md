@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [2e81037] — 2026-05-16
+
+**feat(infra): add persistence adapters and use cases for user, project, skill**
+
+> what: Implements JPA repository adapters, DJL embedding service, and
+> application use cases for the user, project, and skill bounded
+> contexts, wiring Oracle 23ai VECTOR columns via JdbcTemplate
+> why:  Domain layer was complete but had no persistence or orchestration;
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/project/CreateProjectHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/project/GetOrCreateProjectHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/skill/QuerySkillsHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/skill/SyncSkillHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/user/RegisterOrGetUser.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/user/RegisterOrGetUserHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/embedding/DjlEmbeddingService.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/embedding/EmbeddingService.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectRepositoryAdapter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectSkillJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectSpringDataRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/shared/UuidRawConverter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/skill/SkillChunkJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/skill/SkillChunkSpringDataRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/skill/SkillJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/skill/SkillRepositoryAdapter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/skill/SkillSpringDataRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/user/UserJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/user/UserRepositoryAdapter.java`
+- _…and 1 more_
+
+#### Changed
+
+- `pom.xml`
+
+---
+
 ### [ecc56c6] — 2026-05-16
 
 **fix(memory): remove dead code and fix symbol display in query output**
