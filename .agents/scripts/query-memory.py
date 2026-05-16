@@ -52,14 +52,14 @@ def print_symbol(m, score_label):
 
 
 def print_change(m, score_label):
-    print(f"## [{m.get('change_type','?').upper()}] {m.get('symbol')} — {m.get('file_kind','')}")
+    hunks = m.get('hunks_count', '?')
+    print(f"## [{m.get('change_type','?').upper()}] {m.get('file_kind','')} — {hunks} hunk(s)")
     print(f"   File:   {m.get('file')}")
-    print(f"   Lines:  {m.get('lines_start', 0)}-{m.get('lines_end', 0)}  Δ{m.get('lines_delta', 0):+d}")
     print(f"   Intent: {m.get('intent')}")
-    print(f"   Commit: {m.get('commit')}  {m.get('ts')}  {m.get('author')} <{m.get('email')}>")
+    print(f"   Commit: {m.get('commit')}  {m.get('ts')}  {m.get('author')}")
     hunk = (m.get('hunk_content') or '').strip()
     if hunk:
-        preview = '\n   '.join(hunk.splitlines()[:6])
+        preview = '\n   '.join(hunk.splitlines()[:8])
         print(f"   Diff:\n   {preview}")
     print(f"   Score:  {score_label}")
     print()

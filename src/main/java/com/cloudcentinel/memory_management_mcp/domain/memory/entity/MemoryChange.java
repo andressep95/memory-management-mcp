@@ -12,55 +12,66 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * Aggregate root del bounded context Memory.
+ * Representa todos los cambios de un archivo en un commit específico.
+ * Los hunks individuales (bloques @@) se almacenan como entidades hijas.
+ */
 public class MemoryChange {
 
-    private final MemoryChangeId id;
-    private final ProjectId      projectId;
-    private final CommitHash     commitHash;
-    private final String         branch;
-    private final String         author;
-    private final String         filePath;
-    private final Integer        linesStart;
-    private final Integer        linesEnd;
-    private final ChangeIntent   intent;
-    private final String         what;
-    private final String         why;
-    private final String         language;
-    private final List<String>   tags;
-    private EmbeddingVector      embedding;
-    private final Instant        createdAt;
+    private final MemoryChangeId         id;
+    private final ProjectId              projectId;
+    private final CommitHash             commitHash;
+    private final String                 branch;
+    private final String                 author;
+    private final String                 filePath;
+    private final ChangeIntent           intent;
+    private final String                 what;
+    private final String                 why;
+    private final String                 language;
+    private final List<String>           tags;
+    private final String                 rawDiff;
+    private final String                 contentBefore;
+    private final String                 contentAfter;
+    private EmbeddingVector              embedding;
+    private final Instant                createdAt;
 
-    private final List<CommitIndexed> domainEvents = new ArrayList<>();
+    private final List<MemoryChangeHunk> hunks        = new ArrayList<>();
+    private final List<CommitIndexed>    domainEvents = new ArrayList<>();
 
     private MemoryChange(MemoryChangeId id, ProjectId projectId, CommitHash commitHash,
                          String branch, String author, String filePath,
-                         Integer linesStart, Integer linesEnd, ChangeIntent intent,
-                         String what, String why, String language, List<String> tags,
+                         ChangeIntent intent, String what, String why,
+                         String language, List<String> tags,
+                         String rawDiff, String contentBefore, String contentAfter,
                          Instant createdAt) {
-        this.id          = id;
-        this.projectId   = projectId;
-        this.commitHash  = commitHash;
-        this.branch      = branch;
-        this.author      = author;
-        this.filePath    = filePath;
-        this.linesStart  = linesStart;
-        this.linesEnd    = linesEnd;
-        this.intent      = intent;
-        this.what        = what;
-        this.why         = why;
-        this.language    = language;
-        this.tags        = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
-        this.createdAt   = createdAt;
+        this.id            = id;
+        this.projectId     = projectId;
+        this.commitHash    = commitHash;
+        this.branch        = branch;
+        this.author        = author;
+        this.filePath      = filePath;
+        this.intent        = intent;
+        this.what          = what;
+        this.why           = why;
+        this.language      = language;
+        this.tags          = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
+        this.rawDiff       = rawDiff;
+        this.contentBefore = contentBefore;
+        this.contentAfter  = contentAfter;
+        this.createdAt     = createdAt;
     }
 
     public static MemoryChange index(ProjectId projectId, CommitHash commitHash,
                                      String branch, String author, String filePath,
-                                     Integer linesStart, Integer linesEnd, ChangeIntent intent,
-                                     String what, String why, String language, List<String> tags) {
+                                     ChangeIntent intent, String what, String why,
+                                     String language, List<String> tags,
+                                     String rawDiff, String contentBefore, String contentAfter) {
         MemoryChange change = new MemoryChange(
                 MemoryChangeId.generate(), projectId, commitHash,
-                branch, author, filePath, linesStart, linesEnd, intent,
-                what, why, language, tags, Instant.now()
+                branch, author, filePath, intent, what, why,
+                language, tags, rawDiff, contentBefore, contentAfter,
+                Instant.now()
         );
         change.domainEvents.add(new CommitIndexed(change.id, change.projectId, change.commitHash));
         return change;
@@ -68,17 +79,33 @@ public class MemoryChange {
 
     public static MemoryChange reconstitute(MemoryChangeId id, ProjectId projectId,
                                             CommitHash commitHash, String branch, String author,
-                                            String filePath, Integer linesStart, Integer linesEnd,
-                                            ChangeIntent intent, String what, String why,
-                                            String language, List<String> tags,
-                                            EmbeddingVector embedding, Instant createdAt) {
+                                            String filePath, ChangeIntent intent,
+                                            String what, String why, String language,
+                                            List<String> tags, String rawDiff,
+                                            String contentBefore, String contentAfter,
+                                            EmbeddingVector embedding, Instant createdAt,
+                                            List<MemoryChangeHunk> hunks) {
         MemoryChange change = new MemoryChange(
                 id, projectId, commitHash, branch, author, filePath,
-                linesStart, linesEnd, intent, what, why, language, tags, createdAt
+                intent, what, why, language, tags,
+                rawDiff, contentBefore, contentAfter, createdAt
         );
         change.embedding = embedding;
+        if (hunks != null) change.hunks.addAll(hunks);
         return change;
     }
+
+    // ── hunks ───────────────────────────────────────────────────
+
+    public void addHunk(MemoryChangeHunk hunk) {
+        this.hunks.add(hunk);
+    }
+
+    public List<MemoryChangeHunk> hunksPendingPersistence() {
+        return Collections.unmodifiableList(hunks);
+    }
+
+    // ── embedding ───────────────────────────────────────────────
 
     public boolean needsEmbedding() { return embedding == null; }
 
@@ -86,25 +113,31 @@ public class MemoryChange {
         this.embedding = embedding;
     }
 
+    // ── events ──────────────────────────────────────────────────
+
     public List<CommitIndexed> pullEvents() {
         List<CommitIndexed> events = new ArrayList<>(domainEvents);
         domainEvents.clear();
         return Collections.unmodifiableList(events);
     }
 
-    public MemoryChangeId  id()          { return id; }
-    public ProjectId       projectId()   { return projectId; }
-    public CommitHash      commitHash()  { return commitHash; }
-    public String          branch()      { return branch; }
-    public String          author()      { return author; }
-    public String          filePath()    { return filePath; }
-    public Integer         linesStart()  { return linesStart; }
-    public Integer         linesEnd()    { return linesEnd; }
-    public ChangeIntent    intent()      { return intent; }
-    public String          what()        { return what; }
-    public String          why()         { return why; }
-    public String          language()    { return language; }
-    public List<String>    tags()        { return Collections.unmodifiableList(tags); }
-    public EmbeddingVector embedding()   { return embedding; }
-    public Instant         createdAt()   { return createdAt; }
+    // ── accessors ───────────────────────────────────────────────
+
+    public MemoryChangeId         id()            { return id; }
+    public ProjectId              projectId()     { return projectId; }
+    public CommitHash             commitHash()    { return commitHash; }
+    public String                 branch()        { return branch; }
+    public String                 author()        { return author; }
+    public String                 filePath()      { return filePath; }
+    public ChangeIntent           intent()        { return intent; }
+    public String                 what()          { return what; }
+    public String                 why()           { return why; }
+    public String                 language()      { return language; }
+    public List<String>           tags()          { return Collections.unmodifiableList(tags); }
+    public String                 rawDiff()       { return rawDiff; }
+    public String                 contentBefore() { return contentBefore; }
+    public String                 contentAfter()  { return contentAfter; }
+    public EmbeddingVector        embedding()     { return embedding; }
+    public Instant                createdAt()     { return createdAt; }
+    public List<MemoryChangeHunk> hunks()         { return Collections.unmodifiableList(hunks); }
 }

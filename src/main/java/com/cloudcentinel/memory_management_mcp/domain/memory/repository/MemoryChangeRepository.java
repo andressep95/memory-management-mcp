@@ -15,7 +15,8 @@ public interface MemoryChangeRepository {
 
     Optional<MemoryChange> findById(MemoryChangeId id);
 
-    boolean existsByProjectAndCommit(ProjectId projectId, CommitHash commitHash);
+    /** Verifica si un archivo específico de un commit ya fue indexado. */
+    boolean existsByProjectCommitAndFile(ProjectId projectId, CommitHash commitHash, String filePath);
 
     /** Búsqueda semántica sobre el historial de commits del proyecto. */
     List<ScoredMemoryChange> findSimilar(EmbeddingVector query, ProjectId projectId, int limit);
