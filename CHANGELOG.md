@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [714e1c1] — 2026-05-16
+
+**feat(memory): add memory indexing application layer and REST API**
+
+> what: Add batch index handlers, JPA persistence adapters, REST
+> controllers, and MCP tools for memory change indexing
+> why:  Enables the MCP server to expose semantic memory indexing
+> through both REST and MCP tool protocols
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/BatchIndexMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/GetIndexedCommitsHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/IndexMemoryChangeHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/QueryMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/McpToolsConfiguration.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/MemoryMcpTools.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/ProjectMcpTools.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SkillMcpTools.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/UserMcpTools.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeHunkJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeRepositoryAdapter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeSpringDataRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/MemoryRestController.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/ProjectRestController.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/UserRestController.java`
+
+---
+
 ### [2e81037] — 2026-05-16
 
 **feat(infra): add persistence adapters and use cases for user, project, skill**
