@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [c0988a4] — 2026-05-16
+
+**refactor(rest): remove user/project controllers and move to /internal**
+
+> what: Deletes UserRestController and ProjectRestController; remaps
+> /api/memory to /internal/memory; removes user/project REST
+> helpers from extract_changes.py, replacing them with --project-id
+> why:  User and project registration belongs exclusively to MCP tools;
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/MemoryRestController.java`
+
+#### Removed
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/ProjectRestController.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/UserRestController.java`
+
+---
+
 ### [5b8900a] — 2026-05-16
 
 **fix(memory): resolve DJL batch embedding and batch index dedup**
