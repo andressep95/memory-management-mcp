@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [ecc56c6] — 2026-05-16
+
+**fix(memory): remove dead code and fix symbol display in query output**
+
+> what: Removes unused get_file_content helper and updates query-all.py
+> to display file_kind instead of the now-absent per-hunk symbol
+> why:  Per-file granularity eliminated the hunk-level symbol field;
+> dead code and broken display were left over from the refactor
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `.agents/scripts/query-all.py`
+
+---
+
 ### [7210264] — 2026-05-16
 
 **feat(memory): change indexing granularity to per-file with audit content**
