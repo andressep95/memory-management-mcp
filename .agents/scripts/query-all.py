@@ -86,10 +86,8 @@ def main():
                     for h in injected_hits:
                         m = h["meta"]
                         sc = h["score"]
-                        output.append(
-                            f"## {m.get('symbol','')} "
-                            f"({m.get('kind', m.get('file_kind', ''))})"
-                        )
+                        kind = m.get("file_kind", m.get("kind", ""))
+                        output.append(f"## ({kind})")
                         output.append(f"   File:   {m.get('file')}")
                         output.append(f"   Intent: {m.get('intent')}")
                         output.append(f"   Score:  {sc:.2%}\n")

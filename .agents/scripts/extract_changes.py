@@ -49,14 +49,6 @@ def run(cmd: str) -> str:
     return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
 
 
-def get_file_content(ref: str, file: str) -> str:
-    """Return file content at a git ref, empty string if not found (new/deleted file)."""
-    result = subprocess.run(
-        f'git show "{ref}":"{file}"', shell=True, capture_output=True, text=True
-    )
-    return result.stdout if result.returncode == 0 else ""
-
-
 def detect_language(path: str) -> str:
     return LANGUAGE_MAP.get(Path(path).suffix.lower(), "other")
 
