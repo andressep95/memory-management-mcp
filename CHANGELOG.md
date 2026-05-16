@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [7210264] — 2026-05-16
+
+**feat(memory): change indexing granularity to per-file with audit content**
+
+> what: Stores one record per file per commit (not per hunk), capturing
+> raw_diff, content_before, and content_after for full reconstruction
+> why:  Per-hunk granularity prevented showing the complete file state
+> before/after a commit; auditing from the frontend requires the
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/entity/MemoryChangeHunk.java`
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `.agents/scripts/query-memory.py`
+- `.agents/scripts/scan-history.sh`
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/entity/MemoryChange.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/MemoryChangeRepository.java`
+
+---
+
 ### [73686e2] — 2026-05-15
 
 **feat(domain): add Knowledge bounded context**
