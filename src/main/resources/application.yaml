@@ -2,6 +2,10 @@ spring:
   application:
     name: memory-management-mcp
 
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.oracle.autoconfigure.OracleVectorStoreAutoConfiguration
+
   datasource:
     url: jdbc:oracle:thin:@localhost:1521/FREEPDB1
     username: mcp_user

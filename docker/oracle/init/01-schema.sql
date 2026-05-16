@@ -175,14 +175,14 @@ CREATE TABLE user_preferences (
     id                   RAW(16)                             DEFAULT SYS_GUID() NOT NULL,
     user_id              RAW(16)                             NOT NULL,
     project_id           RAW(16)                             NOT NULL,
-    mode                 VARCHAR2(20)                        NOT NULL,
+    selection_mode       VARCHAR2(20)                        NOT NULL,
     active               NUMBER(1)                           DEFAULT 1 NOT NULL,
     configured_at        TIMESTAMP WITH TIME ZONE            DEFAULT SYSTIMESTAMP NOT NULL,
     CONSTRAINT pk_user_preferences PRIMARY KEY (id),
     CONSTRAINT fk_user_preferences_user_id FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_user_preferences_project_id FOREIGN KEY (project_id) REFERENCES projects (id),
     CONSTRAINT uk_user_preferences_user_id_project_id UNIQUE (user_id, project_id),
-    CONSTRAINT ck_user_preferences_0 CHECK (mode IN ('additive', 'restrictive')),
+    CONSTRAINT ck_user_preferences_0 CHECK (selection_mode IN ('additive', 'restrictive')),
     CONSTRAINT ck_user_preferences_1 CHECK (active IN (0, 1))
 );
 
@@ -331,7 +331,7 @@ COMMENT ON TABLE  user_preferences             IS 'Tabla intermedia. Configuraci
 COMMENT ON COLUMN user_preferences.id              IS 'PK generado por Oracle (SYS_GUID).';
 COMMENT ON COLUMN user_preferences.user_id         IS 'FK a USERS.id.';
 COMMENT ON COLUMN user_preferences.project_id      IS 'FK a PROJECTS.id.';
-COMMENT ON COLUMN user_preferences.mode            IS 'additive: el usuario ve toda la bateria del proyecto mas sus skills privados. restrictive: el usuario ve solo los skills que selecciono de la bateria via USER_PREFERENCE_SKILLS.';
+COMMENT ON COLUMN user_preferences.selection_mode  IS 'additive: el usuario ve toda la bateria del proyecto mas sus skills privados. restrictive: el usuario ve solo los skills que selecciono de la bateria via USER_PREFERENCE_SKILLS.';
 COMMENT ON COLUMN user_preferences.active          IS '1 = configuracion vigente, 0 = desactivada.';
 COMMENT ON COLUMN user_preferences.configured_at   IS 'Ultima vez que el usuario modifico su configuracion.';
 
@@ -389,7 +389,7 @@ CREATE VECTOR INDEX vidx_memory_changes_embedding
 
 -- skill_chunks: JOIN por skill y busqueda por nombre de chunk
 CREATE INDEX idx_skill_chunks_skill    ON skill_chunks (skill_id, position);
-CREATE INDEX idx_skill_chunks_name     ON skill_chunks (skill_id, chunk_name);
+-- idx_skill_chunks_name omitted: covered by uk_skill_chunks_skill_chunk unique constraint
 
 -- project_skills: JOIN por project_id y skill_id
 CREATE INDEX idx_project_skills_project ON project_skills (project_id, active);
@@ -399,8 +399,8 @@ CREATE INDEX idx_project_skills_skill   ON project_skills (skill_id);
 CREATE INDEX idx_user_private_skills_user    ON user_private_skills (user_id, project_id);
 CREATE INDEX idx_user_private_skills_skill   ON user_private_skills (skill_id);
 
--- user_project_roles: lookup de rol por usuario
-CREATE INDEX idx_user_project_roles_user     ON user_project_roles (user_id, project_id);
+-- user_project_roles: lookup de rol por usuario (covered by unique constraint)
+-- CREATE INDEX idx_user_project_roles_user     ON user_project_roles (user_id, project_id);
 
 -- user_preferences: lookup por usuario+proyecto
 CREATE INDEX idx_user_preferences_user       ON user_preferences (user_id, project_id);

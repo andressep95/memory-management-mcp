@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """
-Post-commit extractor — indexes each modified file directly into ChromaDB.
+Post-commit extractor — dual-write to ChromaDB + Oracle MCP server.
 
-Granularity: 1 record per file per commit (not per hunk).
-  - document  : semantic description (what/why) — this is what gets embedded
-  - hunk_content : raw diff text for the file — stored as metadata, not embedded
-  - hunks_count  : number of @@ blocks in the file change
+Granularity: 1 record per file per commit.
+  - Chroma : embedded semantic desc (what/why) — fast local search
+  - Oracle : same data via REST batch API — persistent, VECTOR index
 
 Run modes:
   python3 extract_changes.py              # index HEAD (post-commit hook)
   python3 extract_changes.py --ref <sha>  # index a specific commit
-  python3 extract_changes.py --all        # replay full git history (model loaded once)
+  python3 extract_changes.py --all        # replay full git history
+
+Diff strategy (--all):
+  1. Ask Oracle which commits are already indexed (GET /api/memory/commits)
+  2. Ask Chroma which commits are already indexed
+  3. Only process commits missing from each store
+  Oracle is authoritative for the diff — avoids re-embedding on restart.
 """
 
 import os
@@ -22,13 +27,15 @@ import warnings
 warnings.filterwarnings("ignore", message=".*unauthenticated.*")
 warnings.filterwarnings("ignore", message=".*HF_TOKEN.*")
 
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-BATCH             = 100
-MAX_HUNK_CONTENT  = 12_000  # chars stored in Chroma metadata (keep metadata lean)
+CHROMA_BATCH      = 100
+MCP_BATCH_SIZE    = 10         # entries per /api/memory/batch call
+MAX_HUNK_CONTENT  = 12_000
 
 LANGUAGE_MAP = {
     ".java": "java", ".kt": "kotlin", ".scala": "scala",
@@ -78,14 +85,13 @@ def parse_commit_parts(intent: str) -> tuple[str, str]:
 def parse_body(body: str) -> tuple[str, str, bool]:
     what, why, breaking = "", "", False
     for line in body.splitlines():
-        if line.startswith("what:"):     what     = line[5:].strip()
-        elif line.startswith("why:"):    why      = line[4:].strip()
+        if line.startswith("what:"):      what     = line[5:].strip()
+        elif line.startswith("why:"):     why      = line[4:].strip()
         elif line.startswith("breaking:"): breaking = line[9:].strip().lower() == "true"
     return what, why, breaking
 
 
 def parse_hunks(diff: str) -> list[dict]:
-    """Parse @@ blocks into a list of hunk metadata dicts."""
     hunks, current = [], None
     for line in diff.splitlines():
         if line.startswith("@@"):
@@ -102,12 +108,15 @@ def parse_hunks(diff: str) -> list[dict]:
                 "lines_end":   start + max(count - 1, 0),
                 "adds":        False,
                 "dels":        False,
+                "diff":        [],
             }
         elif current is not None:
             if line.startswith("+") and not line.startswith("+++"):
                 current["adds"] = True
+                current["diff"].append(line)
             elif line.startswith("-") and not line.startswith("---"):
                 current["dels"] = True
+                current["diff"].append(line)
     if current:
         hunks.append(current)
     return hunks
@@ -140,10 +149,86 @@ def resolve_branch(ref: str) -> str:
     return main_branch[0] if main_branch else (candidates[0] if candidates else "unknown")
 
 
-def process_commit(ref: str, collection, project: str) -> int:
+# ── Oracle MCP REST helpers ──────────────────────────────────────────────────
+
+def oracle_get_indexed_commits(project_id: str, base_url: str) -> set[str]:
+    """Returns set of commit hashes already indexed in Oracle."""
+    try:
+        import urllib.request
+        url = f"{base_url}/api/memory/commits?projectId={project_id}"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return set(json.loads(resp.read()))
+    except Exception as e:
+        print(f"[oracle] Warning: could not fetch indexed commits: {e}", file=sys.stderr)
+        return set()
+
+
+def oracle_batch_push(project_id: str, entries: list[dict], base_url: str) -> tuple[int, int]:
+    """POST a batch of entries to /api/memory/batch. Returns (inserted, skipped)."""
+    if not entries:
+        return 0, 0
+    try:
+        import urllib.request
+        payload = json.dumps({"projectId": project_id, "entries": entries}).encode()
+        req = urllib.request.Request(
+            f"{base_url}/api/memory/batch",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = json.loads(resp.read())
+            return body.get("inserted", 0), body.get("skipped", 0)
+    except Exception as e:
+        print(f"[oracle] Batch push failed: {e}", file=sys.stderr)
+        return 0, 0
+
+
+def oracle_register_user(git_username: str, base_url: str) -> str | None:
+    """Register or get user, returns userId."""
+    try:
+        import urllib.request
+        payload = json.dumps({"gitUsername": git_username}).encode()
+        req = urllib.request.Request(
+            f"{base_url}/api/users/register",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())["userId"]
+    except Exception as e:
+        print(f"[oracle] Could not register user: {e}", file=sys.stderr)
+        return None
+
+
+def oracle_get_or_create_project(name: str, user_id: str, base_url: str) -> str | None:
+    """Get or create project, returns projectId."""
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "name": name, "description": f"Git project: {name}", "createdBy": user_id
+        }).encode()
+        req = urllib.request.Request(
+            f"{base_url}/api/projects",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())["projectId"]
+    except Exception as e:
+        print(f"[oracle] Could not resolve project: {e}", file=sys.stderr)
+        return None
+
+
+# ── Core commit processing ───────────────────────────────────────────────────
+
+def extract_commit_data(ref: str, project: str) -> tuple[str, list[dict]]:
     """
-    Index all file-level changes for one commit into Chroma.
-    Returns the number of new records upserted.
+    Extract all file-level change data for a commit.
+    Returns (short_hash, list_of_file_entries).
+    Does NOT write to any store — caller decides where to write.
     """
     commit = run(f"git log -1 --format=%h {ref}")
     author = run(f"git log -1 --format=%an {ref}")
@@ -157,24 +242,12 @@ def process_commit(ref: str, collection, project: str) -> int:
 
     parent = run(f"git rev-parse --verify {ref}~1 2>/dev/null")
     if not parent:
-        parent = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # empty tree
+        parent = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
     all_files = [f for f in run(f"git diff-tree --no-commit-id -r --name-only {ref}").splitlines() if f]
-    if not all_files:
-        return 0
 
-    # Pre-fetch existing IDs for this commit to skip duplicates
-    existing: set[str] = set()
-    if collection.count() > 0:
-        existing = set(collection.get(where={"commit": commit}, include=[])["ids"])
-
-    ids, documents, metadatas = [], [], []
-
+    entries = []
     for file in all_files:
-        rid = f"{commit}:{file}"
-        if rid in existing:
-            continue
-
         kind = file_kind(file)
         lang = detect_language(file)
 
@@ -191,95 +264,239 @@ def process_commit(ref: str, collection, project: str) -> int:
                 "symbol": "", "lines_start": 1, "lines_end": 1,
                 "adds": any(l.startswith("+") for l in lines),
                 "dels": any(l.startswith("-") for l in lines),
+                "diff": [],
             }]
 
-        ctype    = overall_change_type(hunks)
-        tags     = [t for t in [commit_type, ctype, kind, scope] if t]
-        sdesc    = semantic_desc(what, why, intent, file)
+        ctype = overall_change_type(hunks)
+        tags  = [t for t in [commit_type, ctype, kind, scope] if t]
+        sdesc = semantic_desc(what, why, intent, file)
+        hunk_content = diff_body[:MAX_HUNK_CONTENT]
 
-        # Truncate diff for Chroma metadata; full content stored in Oracle via Java service
-        hunk_content = diff_body if len(diff_body) <= MAX_HUNK_CONTENT else diff_body[:MAX_HUNK_CONTENT]
-
-        ids.append(rid)
-        documents.append(sdesc)
-        metadatas.append({
-            "file":         file,
-            "file_kind":    kind,
-            "language":     lang,
-            "what":         what,
-            "why":          why,
-            "intent":       intent,
-            "commit_type":  commit_type,
-            "scope":        scope,
-            "change_type":  ctype,
-            "commit":       commit,
-            "branch":       branch,
-            "project":      project,
-            "ts":           ts,
-            "author":       author,
-            "tags":         ",".join(tags),
-            "hunks_count":  len(hunks),
+        entries.append({
+            "commit":      commit,
+            "author":      author,
+            "ts":          ts,
+            "intent":      intent,
+            "branch":      branch,
+            "what":        what,
+            "why":         why,
+            "commit_type": commit_type,
+            "scope":       scope,
+            "file":        file,
+            "file_kind":   kind,
+            "language":    lang,
+            "change_type": ctype,
+            "tags":        tags,
+            "breaking":    breaking,
+            "sdesc":       sdesc,
             "hunk_content": hunk_content,
-            "breaking":     str(breaking).lower(),
+            "hunks":       hunks,
+        })
+
+    return commit, entries
+
+
+def push_to_chroma(entries: list[dict], existing: set[str], collection) -> int:
+    ids, documents, metadatas = [], [], []
+    for e in entries:
+        rid = f"{e['commit']}:{e['file']}"
+        if rid in existing:
+            continue
+        ids.append(rid)
+        documents.append(e["sdesc"])
+        metadatas.append({
+            "file":         e["file"],
+            "file_kind":    e["file_kind"],
+            "language":     e["language"],
+            "what":         e["what"],
+            "why":          e["why"],
+            "intent":       e["intent"],
+            "commit_type":  e["commit_type"],
+            "scope":        e["scope"],
+            "change_type":  e["change_type"],
+            "commit":       e["commit"],
+            "branch":       e["branch"],
+            "project":      e.get("project", ""),
+            "ts":           e["ts"],
+            "author":       e["author"],
+            "tags":         ",".join(e["tags"]),
+            "hunks_count":  len(e["hunks"]),
+            "hunk_content": e["hunk_content"],
+            "breaking":     str(e["breaking"]).lower(),
         })
 
     if not ids:
         return 0
 
-    for i in range(0, len(ids), BATCH):
+    for i in range(0, len(ids), CHROMA_BATCH):
         collection.upsert(
-            ids=ids[i:i + BATCH],
-            documents=documents[i:i + BATCH],
-            metadatas=metadatas[i:i + BATCH],
+            ids=ids[i:i + CHROMA_BATCH],
+            documents=documents[i:i + CHROMA_BATCH],
+            metadatas=metadatas[i:i + CHROMA_BATCH],
         )
-
     return len(ids)
 
 
+def to_oracle_entry(e: dict) -> dict:
+    return {
+        "commitHash": e["commit"],
+        "branch":     e["branch"],
+        "author":     e["author"],
+        "filePath":   e["file"],
+        "intent":     e["commit_type"] or None,
+        "what":       e["what"] or e["intent"],
+        "why":        e["why"] or None,
+        "language":   e["language"],
+        "tags":       e["tags"],
+        "hunks": [
+            {
+                "linesStart": h["lines_start"],
+                "linesEnd":   h["lines_end"],
+                "symbol":     h.get("symbol", ""),
+                "changeType": ("addition" if h["adds"] and not h["dels"]
+                               else "deletion" if h["dels"] and not h["adds"]
+                               else "modification"),
+                "hunkDiff":   "\n".join(h.get("diff", [])),
+            }
+            for h in e["hunks"]
+        ],
+    }
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
 def main() -> None:
-    import argparse
+    import argparse, io, contextlib
 
     p = argparse.ArgumentParser()
-    p.add_argument("--ref",        default="HEAD", help="Commit ref to index (default: HEAD)")
-    p.add_argument("--all",        action="store_true", help="Replay full git history")
+    p.add_argument("--ref",        default="HEAD")
+    p.add_argument("--all",        action="store_true")
     p.add_argument("--chroma",     default=".agents/memory/chroma")
     p.add_argument("--collection", default="changes")
+    p.add_argument("--mcp-url",    default="http://localhost:8080",
+                   help="Base URL of the MCP Spring Boot server")
+    p.add_argument("--git-user",   default="",
+                   help="Git username for Oracle registration (defaults to git config)")
+    p.add_argument("--no-oracle",  action="store_true", help="Skip Oracle writes")
+    p.add_argument("--no-chroma",  action="store_true", help="Skip Chroma writes")
     args = p.parse_args()
 
-    try:
-        import chromadb
-        from chromadb.utils import embedding_functions
-    except ImportError:
-        print("ERROR: pip install chromadb", file=sys.stderr)
-        sys.exit(1)
-
-    import io, contextlib
-    client = chromadb.PersistentClient(path=args.chroma)
-    with contextlib.redirect_stderr(io.StringIO()):
-        ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="intfloat/multilingual-e5-small"
+    # ── Chroma setup ──────────────────────────────────────────────────────
+    collection = None
+    if not args.no_chroma:
+        try:
+            import chromadb
+            from chromadb.utils import embedding_functions
+        except ImportError:
+            print("ERROR: pip install chromadb", file=sys.stderr)
+            sys.exit(1)
+        client = chromadb.PersistentClient(path=args.chroma)
+        with contextlib.redirect_stderr(io.StringIO()):
+            ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="intfloat/multilingual-e5-small"
+            )
+        collection = client.get_or_create_collection(
+            name=args.collection,
+            embedding_function=ef,
+            metadata={"hnsw:space": "cosine"},
         )
-    collection = client.get_or_create_collection(
-        name=args.collection,
-        embedding_function=ef,
-        metadata={"hnsw:space": "cosine"},
-    )
 
-    project = Path(run("git rev-parse --show-toplevel")).name
+    project_name = Path(run("git rev-parse --show-toplevel")).name
 
+    # ── Oracle setup ──────────────────────────────────────────────────────
+    oracle_project_id = None
+    if not args.no_oracle:
+        git_user = args.git_user or run("git config user.name") or "unknown"
+        user_id  = oracle_register_user(git_user, args.mcp_url)
+        if user_id:
+            oracle_project_id = oracle_get_or_create_project(project_name, user_id, args.mcp_url)
+        if not oracle_project_id:
+            print("[oracle] Could not resolve project — Oracle writes disabled.", file=sys.stderr)
+
+    # ── Indexed sets for diff ─────────────────────────────────────────────
+    oracle_indexed: set[str] = set()
+    if oracle_project_id:
+        print("[oracle] Fetching already-indexed commits...")
+        oracle_indexed = oracle_get_indexed_commits(oracle_project_id, args.mcp_url)
+        print(f"[oracle] {len(oracle_indexed)} commits already indexed.")
+
+    # ── Process commits ───────────────────────────────────────────────────
     if args.all:
         commits = [c for c in run("git log --reverse --format=%H").splitlines() if c]
         total   = len(commits)
-        indexed = 0
+        chroma_total = oracle_total = 0
+        oracle_pending: list[dict] = []
+
         for i, full_hash in enumerate(commits, 1):
             short = full_hash[:7]
             print(f"  [{i}/{total}] {short}", end="\r", flush=True)
-            indexed += process_commit(full_hash, collection, project)
-        print(f"\n[memory] Done. {total} commits processed, {indexed} file(s) indexed.")
+
+            commit_hash, entries = extract_commit_data(full_hash, project_name)
+            if not entries:
+                continue
+
+            # Chroma
+            if collection is not None:
+                chroma_existing: set[str] = set()
+                if collection.count() > 0:
+                    chroma_existing = set(collection.get(
+                        where={"commit": commit_hash}, include=[])["ids"])
+                for e in entries:
+                    e["project"] = project_name
+                chroma_total += push_to_chroma(entries, chroma_existing, collection)
+
+            # Oracle — accumulate if not already indexed
+            if oracle_project_id and commit_hash not in oracle_indexed:
+                oracle_pending.extend(to_oracle_entry(e) for e in entries)
+
+            # Flush Oracle in real chunks of MCP_BATCH_SIZE (not all at once)
+            while oracle_project_id and len(oracle_pending) >= MCP_BATCH_SIZE:
+                batch = oracle_pending[:MCP_BATCH_SIZE]
+                del oracle_pending[:MCP_BATCH_SIZE]
+                ins, _ = oracle_batch_push(oracle_project_id, batch, args.mcp_url)
+                oracle_total += ins
+
+        # Final Oracle flush — drain any remaining entries
+        while oracle_pending and oracle_project_id:
+            batch = oracle_pending[:MCP_BATCH_SIZE]
+            del oracle_pending[:MCP_BATCH_SIZE]
+            ins, _ = oracle_batch_push(oracle_project_id, batch, args.mcp_url)
+            oracle_total += ins
+
+        print(f"\n[memory] Done. {total} commits processed.")
+        if collection is not None:
+            print(f"  Chroma: {chroma_total} file(s) indexed.")
+        if oracle_project_id:
+            print(f"  Oracle: {oracle_total} file(s) indexed.")
+
     else:
-        n = process_commit(args.ref, collection, project)
-        commit = run(f"git log -1 --format=%h {args.ref}")
-        print(f"[memory] {n} file(s) → Chroma ({commit})")
+        commit_hash, entries = extract_commit_data(args.ref, project_name)
+        if not entries:
+            print(f"[memory] No files changed in {commit_hash}.")
+            return
+
+        chroma_n = oracle_n = 0
+
+        if collection is not None:
+            chroma_existing: set[str] = set()
+            if collection.count() > 0:
+                chroma_existing = set(collection.get(
+                    where={"commit": commit_hash}, include=[])["ids"])
+            for e in entries:
+                e["project"] = project_name
+            chroma_n = push_to_chroma(entries, chroma_existing, collection)
+
+        if oracle_project_id and commit_hash not in oracle_indexed:
+            oracle_entries = [to_oracle_entry(e) for e in entries]
+            ins, _ = oracle_batch_push(oracle_project_id, oracle_entries, args.mcp_url)
+            oracle_n = ins
+
+        parts = []
+        if collection is not None:
+            parts.append(f"Chroma={chroma_n}")
+        if oracle_project_id:
+            parts.append(f"Oracle={oracle_n}")
+        print(f"[memory] {commit_hash}: {', '.join(parts)} file(s) indexed.")
 
 
 if __name__ == "__main__":

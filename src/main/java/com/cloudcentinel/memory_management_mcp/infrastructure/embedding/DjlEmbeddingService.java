@@ -10,6 +10,8 @@ import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.Embeddin
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class DjlEmbeddingService implements EmbeddingService {
@@ -27,6 +29,23 @@ public class DjlEmbeddingService implements EmbeddingService {
             return new EmbeddingVector(vector);
         } catch (TranslateException e) {
             throw new RuntimeException("Failed to compute embedding for text", e);
+        }
+    }
+
+    @Override
+    public List<EmbeddingVector> embedBatch(List<String> texts) {
+        if (texts == null || texts.isEmpty()) return List.of();
+        ZooModel<String, float[]> loadedModel = getOrLoadModel();
+        // batchPredict requires equal token-length tensors (StackBatchifier limitation).
+        // Reusing one Predictor across sequential predict() calls avoids that constraint.
+        try (Predictor<String, float[]> predictor = loadedModel.newPredictor()) {
+            List<EmbeddingVector> results = new ArrayList<>(texts.size());
+            for (String text : texts) {
+                results.add(new EmbeddingVector(predictor.predict(text)));
+            }
+            return results;
+        } catch (TranslateException e) {
+            throw new RuntimeException("Failed to batch embed texts", e);
         }
     }
 
