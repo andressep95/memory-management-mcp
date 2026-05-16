@@ -155,7 +155,7 @@ def oracle_get_indexed_commits(project_id: str, base_url: str) -> set[str]:
     """Returns set of commit hashes already indexed in Oracle."""
     try:
         import urllib.request
-        url = f"{base_url}/api/memory/commits?projectId={project_id}"
+        url = f"{base_url}/internal/memory/commits?projectId={project_id}"
         with urllib.request.urlopen(url, timeout=10) as resp:
             return set(json.loads(resp.read()))
     except Exception as e:
@@ -164,14 +164,14 @@ def oracle_get_indexed_commits(project_id: str, base_url: str) -> set[str]:
 
 
 def oracle_batch_push(project_id: str, entries: list[dict], base_url: str) -> tuple[int, int]:
-    """POST a batch of entries to /api/memory/batch. Returns (inserted, skipped)."""
+    """POST a batch of entries to /internal/memory/batch. Returns (inserted, skipped)."""
     if not entries:
         return 0, 0
     try:
         import urllib.request
         payload = json.dumps({"projectId": project_id, "entries": entries}).encode()
         req = urllib.request.Request(
-            f"{base_url}/api/memory/batch",
+            f"{base_url}/internal/memory/batch",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -182,44 +182,6 @@ def oracle_batch_push(project_id: str, entries: list[dict], base_url: str) -> tu
     except Exception as e:
         print(f"[oracle] Batch push failed: {e}", file=sys.stderr)
         return 0, 0
-
-
-def oracle_register_user(git_username: str, base_url: str) -> str | None:
-    """Register or get user, returns userId."""
-    try:
-        import urllib.request
-        payload = json.dumps({"gitUsername": git_username}).encode()
-        req = urllib.request.Request(
-            f"{base_url}/api/users/register",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())["userId"]
-    except Exception as e:
-        print(f"[oracle] Could not register user: {e}", file=sys.stderr)
-        return None
-
-
-def oracle_get_or_create_project(name: str, user_id: str, base_url: str) -> str | None:
-    """Get or create project, returns projectId."""
-    try:
-        import urllib.request
-        payload = json.dumps({
-            "name": name, "description": f"Git project: {name}", "createdBy": user_id
-        }).encode()
-        req = urllib.request.Request(
-            f"{base_url}/api/projects",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())["projectId"]
-    except Exception as e:
-        print(f"[oracle] Could not resolve project: {e}", file=sys.stderr)
-        return None
 
 
 # ── Core commit processing ───────────────────────────────────────────────────
@@ -375,8 +337,8 @@ def main() -> None:
     p.add_argument("--collection", default="changes")
     p.add_argument("--mcp-url",    default="http://localhost:8080",
                    help="Base URL of the MCP Spring Boot server")
-    p.add_argument("--git-user",   default="",
-                   help="Git username for Oracle registration (defaults to git config)")
+    p.add_argument("--project-id", default="",
+                   help="Oracle project UUID — obtain once via MCP registerOrGetUser + getOrCreateProject")
     p.add_argument("--no-oracle",  action="store_true", help="Skip Oracle writes")
     p.add_argument("--no-chroma",  action="store_true", help="Skip Chroma writes")
     args = p.parse_args()
@@ -404,14 +366,10 @@ def main() -> None:
     project_name = Path(run("git rev-parse --show-toplevel")).name
 
     # ── Oracle setup ──────────────────────────────────────────────────────
-    oracle_project_id = None
-    if not args.no_oracle:
-        git_user = args.git_user or run("git config user.name") or "unknown"
-        user_id  = oracle_register_user(git_user, args.mcp_url)
-        if user_id:
-            oracle_project_id = oracle_get_or_create_project(project_name, user_id, args.mcp_url)
-        if not oracle_project_id:
-            print("[oracle] Could not resolve project — Oracle writes disabled.", file=sys.stderr)
+    oracle_project_id = args.project_id.strip() or None
+    if not args.no_oracle and not oracle_project_id:
+        print("[oracle] No --project-id provided — Oracle writes disabled.", file=sys.stderr)
+        print("[oracle] Run registerOrGetUser + getOrCreateProject via MCP to get a project UUID.", file=sys.stderr)
 
     # ── Indexed sets for diff ─────────────────────────────────────────────
     oracle_indexed: set[str] = set()

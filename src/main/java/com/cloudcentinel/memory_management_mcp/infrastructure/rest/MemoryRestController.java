@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/api/memory")
+@RequestMapping("/internal/memory")
 public class MemoryRestController {
 
     private final BatchIndexMemoryHandler batchHandler;
