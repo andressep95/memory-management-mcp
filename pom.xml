@@ -54,7 +54,6 @@
 		<dependency>
 			<groupId>com.oracle.database.jdbc</groupId>
 			<artifactId>ojdbc11</artifactId>
-			<scope>runtime</scope>
 		</dependency>
 
 		<!-- ===== ORACLE 23ai VECTOR STORE (Spring AI) ===== -->
