@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [5b8900a] — 2026-05-16
+
+**fix(memory): resolve DJL batch embedding and batch index dedup**
+
+> what: Replace batchPredict with sequential predict per text; filter
+> batch entries by commit:file pair instead of commit hash only;
+> send oracle_pending in real MCP_BATCH_SIZE chunks per request
+> why:  DJL StackBatchifier crashes on unequal token lengths; commit-
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/MemoryChangeRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/embedding/DjlEmbeddingService.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/embedding/EmbeddingService.java`
+- `src/main/resources/application.yaml`
+
+---
+
 ### [714e1c1] — 2026-05-16
 
 **feat(memory): add memory indexing application layer and REST API**
