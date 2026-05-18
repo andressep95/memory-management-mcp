@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [3fa2321] — 2026-05-17
+
+**feat(mcp): add mcp-tools.yaml spec and mcp-tools-doc skill**
+
+> what: Documents active MCP tools in api/mcp-tools.yaml and adds the
+> mcp-tools-doc skill to keep it in sync; removes unused syncSkill tool
+> why:  Establishes the MCP contract as a versioned spec file, mirroring
+> what openapi.yaml does for HTTP — and removes dead code with no caller
+
+#### Added
+
+- `.agents/skills/mcp-tools-doc/SKILL.md`
+- `api/mcp-tools.yaml`
+
+#### Changed
+
+- `.kiro/steering/project-rules.md`
+- `CLAUDE.md`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SkillMcpTools.java`
+
+---
+
 ### [ea36799] — 2026-05-17
 
 **feat(setup): add setupProject MCP tool and project scaffold**
