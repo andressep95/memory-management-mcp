@@ -68,7 +68,7 @@ public class SetupMcpTools {
         String resolvedUrl = (serverUrl == null || serverUrl.isBlank()) ? "http://localhost:8080" : serverUrl.strip();
 
         List<FileEntry>    files    = new ArrayList<>();
-        List<String>       mkdirs   = List.of(".agents", ".agents/scripts", ".claude", ".kiro/hooks", ".kiro/steering");
+        List<String>       mkdirs   = List.of(".agents", ".agents/scripts", ".agents/skills", ".agents/skills/commit", ".claude", ".kiro/hooks", ".kiro/steering");
         List<SymlinkEntry> symlinks = List.of(
                 new SymlinkEntry("CLAUDE.md",                       ".agents/rules.md"),
                 new SymlinkEntry("AGENTS.md",                       ".agents/rules.md"),
@@ -116,12 +116,14 @@ public class SetupMcpTools {
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
         String[] patterns = {
                 "classpath:scaffold/rules.md",
+                "classpath:scaffold/skills/commit/SKILL.md",
                 "classpath:scaffold/.claude/settings.json",
                 "classpath:scaffold/.kiro/hooks/*.yaml",
                 "classpath:scaffold/scripts/*"
         };
         String[] targetPaths = {
                 ".agents/rules.md",
+                ".agents/skills/commit/SKILL.md",
                 ".claude/settings.json",
                 null,  // kiro hooks — resolved below
                 null   // scripts — resolved below
