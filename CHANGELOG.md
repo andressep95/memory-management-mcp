@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [2f7c271] — 2026-05-18
+
+**fix(skills): align scaffold commit skill path with SKILL.md convention**
+
+> what: Scaffold now deploys commit skill as .agents/skills/commit/SKILL.md instead of .agents/skills/commit.md
+> why: Previous flat-file path broke skill discovery which expects <name>/SKILL.md subdirectory structure
+> breaking: false
+
+#### Added
+
+- `src/main/resources/scaffold/skills/commit/SKILL.md`
+
+#### Changed
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SetupMcpTools.java`
+- `src/main/resources/scaffold/manifest.json`
+- `src/main/resources/scaffold/rules.md`
+
+#### Removed
+
+- `.agents/rules.md`
+- `.agents/scripts/__pycache__/extract_changes.cpython-313.pyc`
+- `.agents/scripts/extract_changes.py`
+- `.agents/scripts/generate-changelog.py`
+- `.agents/scripts/init.sh`
+- `.agents/scripts/post-commit`
+- `.agents/scripts/query-all.py`
+- `.agents/scripts/query-memory.py`
+- `.agents/scripts/requirements.txt`
+- `.agents/scripts/scan-history.sh`
+- `.agents/scripts/session-start.sh`
+- `.agents/scripts/sync-skills-to-chroma.py`
+- `.agents/scripts/sync.sh`
+- `.agents/scripts/token-report.py`
+- `.agents/scripts/token-tracker.py`
+- `.agents/scripts/user-prompt-submit.sh`
+- `.agents/scripts/validate-commit.sh`
+- `.agents/skills/caveman/README.md`
+- `.agents/skills/caveman/SKILL.md`
+- `.agents/skills/clean-ddd-hexagonal/SKILL.md`
+- _…and 183 more_
+
+---
+
 ### [1402460] — 2026-05-17
 
 **feat(memory): add kind discrimination for queryCode and queryDocs tools**
