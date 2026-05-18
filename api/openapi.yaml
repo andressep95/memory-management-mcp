@@ -1,0 +1,284 @@
+openapi: 3.1.0
+info:
+  title: Memory Management MCP Server
+  description: |
+    REST API for the Memory Management MCP Server.
+    Handles project registration and git memory indexing for agent sessions.
+
+    **Authentication:** All `/internal/*` endpoints require an `apiKey` obtained
+    from `POST /api/projects`. Pass it in the request body or as a query parameter.
+
+    **MCP tools** (`queryMemory`, `querySkills`, `batchIndexMemory`, `setupProject`, etc.)
+    are exposed via the MCP protocol — not documented here.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: projects
+    description: Project registration and management
+  - name: memory
+    description: Git history indexing consumed by post-commit hooks and scan scripts
+
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+paths:
+
+  /api/projects:
+    post:
+      operationId: create
+      summary: Register a new project
+      description: |
+        Creates a project and returns its `projectId` and `apiKey`.
+        The `apiKey` is used to authenticate all subsequent memory and setup calls.
+        Store it securely — it is not recoverable after this response.
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+            example:
+              name: my-repo
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProjectResponse'
+              example:
+                projectId: 550e8400-e29b-41d4-a716-446655440000
+                apiKey: a3f1b2c4d5e6f7...
+                name: my-repo
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /internal/memory/batch:
+    post:
+      operationId: batchIndex
+      summary: Batch-index git file changes
+      description: |
+        Indexes multiple file-level git changes in a single call.
+        Called by the `post-commit` hook via `extract_changes.py`.
+        Idempotent: duplicate `(commitHash, filePath)` pairs are skipped.
+        Recommended batch size: ≤ 200 entries per call.
+      tags: [memory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchIndexRequest'
+      responses:
+        '200':
+          description: Indexing result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchIndexResponse'
+              example:
+                inserted: 12
+                skipped: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /internal/memory/commits:
+    get:
+      operationId: getIndexedCommits
+      summary: Get already-indexed commit hashes
+      description: |
+        Returns the set of commit hashes already indexed for this project.
+        Called by `extract_changes.py --all` to diff against `git log`
+        and determine which commits still need to be indexed.
+      tags: [memory]
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyQuery'
+      responses:
+        '200':
+          description: Set of indexed commit hashes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  description: Short or full git commit hash
+              example:
+                - a1b2c3d
+                - e4f5g6h
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+# ─────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────
+components:
+
+  parameters:
+    ApiKeyQuery:
+      name: apiKey
+      in: query
+      required: true
+      description: Project API key returned by POST /api/projects
+      schema:
+        type: string
+
+  schemas:
+
+    # ── Projects ──────────────────────────────
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Unique project name, typically the git repository folder name
+          example: my-repo
+
+    CreateProjectResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+          description: Project UUID used by MCP tools
+        apiKey:
+          type: string
+          description: Secret key for all subsequent REST and MCP calls. Store securely.
+        name:
+          type: string
+
+    # ── Memory ────────────────────────────────
+    HunkInput:
+      type: object
+      required: [linesStart, linesEnd, changeType, hunkDiff]
+      properties:
+        linesStart:
+          type: integer
+        linesEnd:
+          type: integer
+        symbol:
+          type: string
+          description: Function or class name context from the @@ header (nullable)
+        changeType:
+          type: string
+          enum: [addition, deletion, modification]
+        hunkDiff:
+          type: string
+          description: Raw diff lines for this hunk
+
+    EntryInput:
+      type: object
+      required: [commitHash, branch, author, filePath, what]
+      properties:
+        commitHash:
+          type: string
+          description: Git commit hash (minimum 7 characters)
+        branch:
+          type: string
+        author:
+          type: string
+          description: Git author name
+        filePath:
+          type: string
+          description: Relative file path within the repository
+        intent:
+          type: string
+          description: "Commit type: feat, fix, refactor, docs, test, chore, perf, style"
+          enum: [feat, fix, refactor, docs, test, chore, perf, style, ci, sec]
+        what:
+          type: string
+          description: Description of what changed in this file
+        why:
+          type: string
+          nullable: true
+          description: Description of why this change was made
+        language:
+          type: string
+          description: Programming language of the file
+        tags:
+          type: array
+          items:
+            type: string
+          description: "Tags: commit_type, change_type, file_kind, scope"
+        hunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HunkInput'
+
+    BatchIndexRequest:
+      type: object
+      required: [apiKey, entries]
+      properties:
+        apiKey:
+          type: string
+          description: Project API key
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryInput'
+          maxItems: 200
+
+    BatchIndexResponse:
+      type: object
+      properties:
+        inserted:
+          type: integer
+          description: Number of new entries indexed
+        skipped:
+          type: integer
+          description: Number of entries skipped (already indexed)
+
+  responses:
+    Unauthorized:
+      description: Unknown or invalid API key
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: integer
+                example: 401
+              error:
+                type: string
+                example: Unknown API key
+
+    Conflict:
+      description: A project with this name already exists
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: integer
+                example: 409
+              error:
+                type: string
+                example: Project already exists
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: integer
+                example: 500
+              error:
+                type: string
+                example: Internal server error
