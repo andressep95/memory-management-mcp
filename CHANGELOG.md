@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [c85e7a3] — 2026-05-17
+
+**feat(project): add project registration endpoint and API key auth**
+
+> what: Adds POST /api/projects that creates a project and returns an
+> API key; memory batch endpoints now resolve project by API key
+> instead of requiring a raw UUID
+> why: Clients should identify projects by an opaque API key rather than
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/project/CreateProjectHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/project/entity/Project.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/project/repository/ProjectRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectRepositoryAdapter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectSpringDataRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/ProjectRestController.java`
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/MemoryRestController.java`
+
+---
+
 ### [25a273f] — 2026-05-17
 
 **refactor(domain): simplify schema from 15 to 11 tables and remove over-engineered bounded contexts**
