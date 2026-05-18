@@ -98,7 +98,7 @@ public class SetupMcpTools {
                 4. Create symlinks[]. Use relative paths as shown.
                 5. Append gitignoreAppend to .gitignore (create if missing).
                 6. Tell the user: "Setup complete. Please restart your session to activate the hooks."
-                7. After restart, run batchIndexMemory to index the git history.
+                7. After restart, session-start.sh will automatically detect that memory is uninitialized and bootstrap it in the background. No manual action required.
                 """);
     }
 
