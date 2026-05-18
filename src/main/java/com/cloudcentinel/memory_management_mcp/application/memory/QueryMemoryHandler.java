@@ -2,7 +2,6 @@ package com.cloudcentinel.memory_management_mcp.application.memory;
 
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.MemoryChangeRepository;
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.ScoredMemoryChange;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.infrastructure.embedding.EmbeddingService;
 import org.springframework.stereotype.Service;
@@ -20,7 +19,7 @@ public class QueryMemoryHandler {
         this.embeddingService = embeddingService;
     }
 
-    public record Query(String prompt, ProjectId projectId, int limit) {}
+    public record Query(String prompt, String projectId, int limit) {}
 
     public List<ScoredMemoryChange> handle(Query query) {
         EmbeddingVector vector = embeddingService.embed(query.prompt());

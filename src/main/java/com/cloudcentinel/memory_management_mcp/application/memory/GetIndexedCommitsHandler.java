@@ -1,7 +1,6 @@
 package com.cloudcentinel.memory_management_mcp.application.memory;
 
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.MemoryChangeRepository;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
@@ -15,7 +14,7 @@ public class GetIndexedCommitsHandler {
         this.repository = repository;
     }
 
-    public Set<String> handle(ProjectId projectId) {
+    public Set<String> handle(String projectId) {
         return repository.findIndexedCommitHashes(projectId);
     }
 }

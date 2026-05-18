@@ -4,7 +4,6 @@ import com.cloudcentinel.memory_management_mcp.domain.memory.event.CommitIndexed
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.MemoryChangeId;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 
 import java.time.Instant;
@@ -12,15 +11,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Aggregate root del bounded context Memory.
- * Representa todos los cambios de un archivo en un commit específico.
- * Los hunks individuales (bloques @@) se almacenan como entidades hijas.
- */
 public class MemoryChange {
 
     private final MemoryChangeId         id;
-    private final ProjectId              projectId;
+    private final String                 projectId;
     private final CommitHash             commitHash;
     private final String                 branch;
     private final String                 author;
@@ -39,7 +33,7 @@ public class MemoryChange {
     private final List<MemoryChangeHunk> hunks        = new ArrayList<>();
     private final List<CommitIndexed>    domainEvents = new ArrayList<>();
 
-    private MemoryChange(MemoryChangeId id, ProjectId projectId, CommitHash commitHash,
+    private MemoryChange(MemoryChangeId id, String projectId, CommitHash commitHash,
                          String branch, String author, String filePath,
                          ChangeIntent intent, String what, String why,
                          String language, List<String> tags,
@@ -62,7 +56,7 @@ public class MemoryChange {
         this.createdAt     = createdAt;
     }
 
-    public static MemoryChange index(ProjectId projectId, CommitHash commitHash,
+    public static MemoryChange index(String projectId, CommitHash commitHash,
                                      String branch, String author, String filePath,
                                      ChangeIntent intent, String what, String why,
                                      String language, List<String> tags,
@@ -77,7 +71,7 @@ public class MemoryChange {
         return change;
     }
 
-    public static MemoryChange reconstitute(MemoryChangeId id, ProjectId projectId,
+    public static MemoryChange reconstitute(MemoryChangeId id, String projectId,
                                             CommitHash commitHash, String branch, String author,
                                             String filePath, ChangeIntent intent,
                                             String what, String why, String language,
@@ -95,25 +89,15 @@ public class MemoryChange {
         return change;
     }
 
-    // ── hunks ───────────────────────────────────────────────────
-
-    public void addHunk(MemoryChangeHunk hunk) {
-        this.hunks.add(hunk);
-    }
+    public void addHunk(MemoryChangeHunk hunk) { this.hunks.add(hunk); }
 
     public List<MemoryChangeHunk> hunksPendingPersistence() {
         return Collections.unmodifiableList(hunks);
     }
 
-    // ── embedding ───────────────────────────────────────────────
-
     public boolean needsEmbedding() { return embedding == null; }
 
-    public void assignEmbedding(EmbeddingVector embedding) {
-        this.embedding = embedding;
-    }
-
-    // ── events ──────────────────────────────────────────────────
+    public void assignEmbedding(EmbeddingVector embedding) { this.embedding = embedding; }
 
     public List<CommitIndexed> pullEvents() {
         List<CommitIndexed> events = new ArrayList<>(domainEvents);
@@ -121,10 +105,8 @@ public class MemoryChange {
         return Collections.unmodifiableList(events);
     }
 
-    // ── accessors ───────────────────────────────────────────────
-
     public MemoryChangeId         id()            { return id; }
-    public ProjectId              projectId()     { return projectId; }
+    public String                 projectId()     { return projectId; }
     public CommitHash             commitHash()    { return commitHash; }
     public String                 branch()        { return branch; }
     public String                 author()        { return author; }

@@ -5,7 +5,6 @@ import com.cloudcentinel.memory_management_mcp.domain.skill.repository.SkillRepo
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.ChunkName;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.SkillContent;
-import com.cloudcentinel.memory_management_mcp.domain.user.valueobject.UserId;
 import com.cloudcentinel.memory_management_mcp.infrastructure.embedding.EmbeddingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +24,7 @@ public class SyncSkillHandler {
 
     public record ChunkEntry(String name, String content, int position) {}
 
-    public record Command(String name, String content, UserId createdBy, List<ChunkEntry> chunks) {}
+    public record Command(String name, String content, List<ChunkEntry> chunks) {}
 
     @Transactional
     public Skill handle(Command command) {
@@ -40,7 +39,7 @@ public class SyncSkillHandler {
                     return existing;
                 })
                 .orElseGet(() -> {
-                    Skill created = Skill.create(command.name(), newContent, command.createdBy());
+                    Skill created = Skill.create(command.name(), newContent);
                     EmbeddingVector embedding = embeddingService.embed(command.content());
                     created.assignEmbedding(embedding);
                     return created;

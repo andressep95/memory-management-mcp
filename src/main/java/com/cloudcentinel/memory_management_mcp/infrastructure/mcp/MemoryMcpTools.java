@@ -6,7 +6,6 @@ import com.cloudcentinel.memory_management_mcp.application.memory.IndexMemoryCha
 import com.cloudcentinel.memory_management_mcp.application.memory.QueryMemoryHandler;
 import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChange;
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.ScoredMemoryChange;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -50,8 +49,6 @@ public class MemoryMcpTools {
 
     public record BatchIndexResult(int inserted, int skipped) {}
 
-    // ── Tools ───────────────────────────────────────────────────────────────
-
     @Tool(description = """
             Search the project's indexed git history by semantic similarity.
             Returns commits and file changes matching the intent of the query.
@@ -60,35 +57,33 @@ public class MemoryMcpTools {
             """)
     public List<MemoryMatchResult> queryMemory(
             @ToolParam(description = "Natural language description of what you are looking for") String prompt,
-            @ToolParam(description = "Project UUID to scope the search") String projectId,
+            @ToolParam(description = "Project UUID (from POST /api/projects)") String projectId,
             @ToolParam(description = "Max results to return (1–10 recommended)") int limit) {
 
         List<ScoredMemoryChange> results = queryHandler.handle(
-                new QueryMemoryHandler.Query(prompt, ProjectId.of(projectId), limit));
-
+                new QueryMemoryHandler.Query(prompt, projectId, limit));
         return results.stream().map(sm -> toResult(sm.change(), sm.score())).toList();
     }
 
     @Tool(description = """
             Returns the set of commit hashes already indexed for this project.
             Call this at session start to diff against 'git log' and determine
-            which commits still need to be indexed via batch_index_memory.
+            which commits still need to be indexed via batchIndexMemory.
             """)
     public Set<String> getIndexedCommits(
-            @ToolParam(description = "Project UUID") String projectId) {
-        return commitsHandler.handle(ProjectId.of(projectId));
+            @ToolParam(description = "Project UUID (from POST /api/projects)") String projectId) {
+        return commitsHandler.handle(projectId);
     }
 
     @Tool(description = """
             Batch-index multiple file changes from git commits in a single call.
             Designed for initial load and catch-up sync.
-            Automatically skips entries already indexed (idempotent by commit hash).
-            Embeds all entries in one forward pass — significantly faster than
-            calling index_memory_change one at a time.
+            Automatically skips entries already indexed (idempotent by commit+file).
+            Embeds all entries sequentially — faster than calling indexMemoryChange one at a time.
             Max recommended batch: 200 entries per call. Split larger histories into chunks.
             """)
     public BatchIndexResult batchIndexMemory(
-            @ToolParam(description = "Project UUID") String projectId,
+            @ToolParam(description = "Project UUID (from POST /api/projects)") String projectId,
             @ToolParam(description = "List of file-change entries to index") List<BatchEntryInput> entries) {
 
         List<BatchIndexMemoryHandler.EntryCommand> commands = entries.stream()
@@ -105,18 +100,17 @@ public class MemoryMcpTools {
                 .toList();
 
         BatchIndexMemoryHandler.Result result = batchHandler.handle(
-                new BatchIndexMemoryHandler.Command(ProjectId.of(projectId), commands));
-
+                new BatchIndexMemoryHandler.Command(projectId, commands));
         return new BatchIndexResult(result.inserted(), result.skipped());
     }
 
     @Tool(description = """
             Index a single file change from a git commit.
-            Use batch_index_memory for bulk loads.
+            Use batchIndexMemory for bulk loads.
             Idempotent: skips if file+commit already indexed.
             """)
     public IndexResult indexMemoryChange(
-            @ToolParam(description = "Project UUID") String projectId,
+            @ToolParam(description = "Project UUID (from POST /api/projects)") String projectId,
             @ToolParam(description = "Git commit hash (minimum 7 characters)") String commitHash,
             @ToolParam(description = "Git branch name") String branch,
             @ToolParam(description = "Git commit author name") String author,
@@ -125,7 +119,7 @@ public class MemoryMcpTools {
             @ToolParam(description = "Description of what changed in this file") String what,
             @ToolParam(description = "Description of why this change was made (nullable)") String why,
             @ToolParam(description = "Programming language of the file") String language,
-            @ToolParam(description = "Tags list: commit_type, change_type, file_kind, scope") List<String> tags,
+            @ToolParam(description = "Tags: commit_type, change_type, file_kind, scope") List<String> tags,
             @ToolParam(description = "Individual @@ diff hunks for this file (can be empty)") List<HunkInput> hunks) {
 
         List<IndexMemoryChangeHandler.HunkInput> domainHunks = hunks == null ? List.of()
@@ -135,7 +129,7 @@ public class MemoryMcpTools {
                 .toList();
 
         MemoryChange result = indexHandler.handle(new IndexMemoryChangeHandler.Command(
-                ProjectId.of(projectId), commitHash, branch, author, filePath,
+                projectId, commitHash, branch, author, filePath,
                 intent, what, why, language, tags, null, null, null, domainHunks));
 
         if (result == null) return new IndexResult(null, filePath, commitHash, true);

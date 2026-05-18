@@ -6,7 +6,6 @@ import com.cloudcentinel.memory_management_mcp.domain.memory.repository.ScoredMe
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.MemoryChangeId;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.infrastructure.persistence.shared.UuidRawConverter;
 import oracle.sql.VECTOR;
@@ -62,8 +61,7 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
 
     @Override
     public void save(MemoryChange change) {
-        MemoryChangeJpaEntity entity = MemoryChangeJpaEntity.from(change);
-        jpaRepo.save(entity);
+        jpaRepo.save(MemoryChangeJpaEntity.from(change));
         if (change.embedding() != null) {
             updateEmbedding(change.id().value(), change.embedding().values());
         }
@@ -75,7 +73,7 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
 
         jdbcTemplate.batchUpdate(INSERT_SQL, changes, changes.size(), (ps, change) -> {
             ps.setBytes(1,  uuidConverter.convertToDatabaseColumn(change.id().value()));
-            ps.setBytes(2,  uuidConverter.convertToDatabaseColumn(change.projectId().value()));
+            ps.setBytes(2,  uuidConverter.convertToDatabaseColumn(UUID.fromString(change.projectId())));
             ps.setString(3, change.commitHash().value());
             ps.setString(4, change.branch());
             ps.setString(5, change.author());
@@ -106,14 +104,14 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
     }
 
     @Override
-    public boolean existsByProjectCommitAndFile(ProjectId projectId, CommitHash commitHash, String filePath) {
+    public boolean existsByProjectCommitAndFile(String projectId, CommitHash commitHash, String filePath) {
         return jpaRepo.existsByProjectIdAndCommitHashAndFilePath(
-                projectId.value(), commitHash.value(), filePath);
+                UUID.fromString(projectId), commitHash.value(), filePath);
     }
 
     @Override
-    public Set<String> findIndexedCommitHashes(ProjectId projectId) {
-        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(projectId.value());
+    public Set<String> findIndexedCommitHashes(String projectId) {
+        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(UUID.fromString(projectId));
         List<String> hashes = jdbcTemplate.query(
                 FIND_COMMIT_HASHES_SQL,
                 ps -> ps.setBytes(1, projectIdBytes),
@@ -123,8 +121,8 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
     }
 
     @Override
-    public Set<String> findIndexedCommitFilePairs(ProjectId projectId) {
-        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(projectId.value());
+    public Set<String> findIndexedCommitFilePairs(String projectId) {
+        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(UUID.fromString(projectId));
         List<String> pairs = jdbcTemplate.query(
                 FIND_COMMIT_FILE_PAIRS_SQL,
                 ps -> ps.setBytes(1, projectIdBytes),
@@ -134,9 +132,9 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
     }
 
     @Override
-    public List<ScoredMemoryChange> findSimilar(EmbeddingVector query, ProjectId projectId, int limit) {
+    public List<ScoredMemoryChange> findSimilar(EmbeddingVector query, String projectId, int limit) {
         Object vectorParam    = toOracleVector(query.values());
-        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(projectId.value());
+        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(UUID.fromString(projectId));
 
         return jdbcTemplate.query(
                 FIND_SIMILAR_SQL,
@@ -166,7 +164,7 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
 
                     MemoryChange change = MemoryChange.reconstitute(
                             new MemoryChangeId(toUuid(idBytes)),
-                            ProjectId.of(toUuid(projIdB)),
+                            toUuid(projIdB).toString(),
                             new CommitHash(hash),
                             branch, author, filePath,
                             ChangeIntent.fromString(intent),
@@ -183,9 +181,8 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
 
     private void updateEmbedding(UUID id, float[] values) {
         byte[] idBytes = uuidConverter.convertToDatabaseColumn(id);
-        Object vector  = toOracleVector(values);
         jdbcTemplate.update(UPDATE_EMBEDDING_SQL, ps -> {
-            ps.setObject(1, vector);
+            ps.setObject(1, toOracleVector(values));
             ps.setBytes(2, idBytes);
         });
     }

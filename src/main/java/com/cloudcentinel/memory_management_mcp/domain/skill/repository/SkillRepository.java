@@ -1,6 +1,5 @@
 package com.cloudcentinel.memory_management_mcp.domain.skill.repository;
 
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.entity.Skill;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.SkillId;
@@ -16,9 +15,9 @@ public interface SkillRepository {
 
     Optional<Skill> findByName(String name);
 
-    /** Búsqueda semántica sobre el contenido principal del skill, filtrada por proyecto. */
-    List<ScoredSkill> findSimilar(EmbeddingVector query, ProjectId projectId, int limit);
+    /** Semantic search over skill content, scoped to skills enabled for the project. */
+    List<ScoredSkill> findSimilar(EmbeddingVector query, String projectId, int limit);
 
-    /** Búsqueda semántica sobre chunks — devuelve el sub-documento más relevante con su skill padre. */
-    List<ScoredChunk> findSimilarChunks(EmbeddingVector query, ProjectId projectId, int limit);
+    /** Semantic search over skill chunks, scoped to skills enabled for the project. */
+    List<ScoredChunk> findSimilarChunks(EmbeddingVector query, String projectId, int limit);
 }

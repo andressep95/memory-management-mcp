@@ -5,7 +5,6 @@ import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChange
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.MemoryChangeId;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.infrastructure.persistence.shared.UuidRawConverter;
 import jakarta.persistence.*;
 
@@ -84,7 +83,7 @@ public class MemoryChangeJpaEntity {
     public static MemoryChangeJpaEntity from(MemoryChange change) {
         MemoryChangeJpaEntity entity = new MemoryChangeJpaEntity();
         entity.id            = change.id().value();
-        entity.projectId     = change.projectId().value();
+        entity.projectId     = UUID.fromString(change.projectId());
         entity.commitHash    = change.commitHash().value();
         entity.branch        = change.branch();
         entity.author        = change.author();
@@ -101,8 +100,7 @@ public class MemoryChangeJpaEntity {
         entity.createdAt     = change.createdAt().atOffset(ZoneOffset.UTC);
 
         for (MemoryChangeHunk hunk : change.hunks()) {
-            MemoryChangeHunkJpaEntity hunkEntity = MemoryChangeHunkJpaEntity.from(hunk, entity);
-            entity.hunks.add(hunkEntity);
+            entity.hunks.add(MemoryChangeHunkJpaEntity.from(hunk, entity));
         }
         return entity;
     }
@@ -118,7 +116,7 @@ public class MemoryChangeJpaEntity {
 
         return MemoryChange.reconstitute(
                 new MemoryChangeId(id),
-                ProjectId.of(projectId),
+                projectId.toString(),
                 new CommitHash(commitHash),
                 branch, author, filePath,
                 ChangeIntent.fromString(intent),

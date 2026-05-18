@@ -2,7 +2,6 @@ package com.cloudcentinel.memory_management_mcp.infrastructure.rest;
 
 import com.cloudcentinel.memory_management_mcp.application.memory.BatchIndexMemoryHandler;
 import com.cloudcentinel.memory_management_mcp.application.memory.GetIndexedCommitsHandler;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -51,7 +50,7 @@ public class MemoryRestController {
                     .toList();
 
             BatchIndexMemoryHandler.Result result = batchHandler.handle(
-                    new BatchIndexMemoryHandler.Command(ProjectId.of(req.projectId()), commands));
+                    new BatchIndexMemoryHandler.Command(req.projectId(), commands));
 
             return new BatchResponse(result.inserted(), result.skipped());
         }).subscribeOn(Schedulers.boundedElastic());
@@ -59,7 +58,7 @@ public class MemoryRestController {
 
     @GetMapping("/commits")
     public Mono<Set<String>> getIndexedCommits(@RequestParam String projectId) {
-        return Mono.fromCallable(() -> commitsHandler.handle(ProjectId.of(projectId)))
+        return Mono.fromCallable(() -> commitsHandler.handle(projectId))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 }

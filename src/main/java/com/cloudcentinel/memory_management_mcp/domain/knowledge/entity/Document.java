@@ -7,7 +7,6 @@ import com.cloudcentinel.memory_management_mcp.domain.knowledge.valueobject.Docu
 import com.cloudcentinel.memory_management_mcp.domain.knowledge.valueobject.DocumentId;
 import com.cloudcentinel.memory_management_mcp.domain.knowledge.valueobject.DocumentType;
 import com.cloudcentinel.memory_management_mcp.domain.knowledge.valueobject.SourcePath;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 
 import java.time.Instant;
@@ -24,7 +23,7 @@ import java.util.Optional;
 public class Document {
 
     private final DocumentId   id;
-    private final ProjectId    projectId;
+    private final String       projectId;
     private final SourcePath   sourcePath;
     private String             title;
     private DocumentType       type;
@@ -37,7 +36,7 @@ public class Document {
     private final List<DocumentSection> sections     = new ArrayList<>();
     private final List<Object>          domainEvents = new ArrayList<>();
 
-    private Document(DocumentId id, ProjectId projectId, SourcePath sourcePath,
+    private Document(DocumentId id, String projectId, SourcePath sourcePath,
                      String title, DocumentType type, DocumentContent content,
                      Instant sourceModifiedAt) {
         this.id               = id;
@@ -51,7 +50,7 @@ public class Document {
         this.stale            = false;
     }
 
-    public static Document index(ProjectId projectId, SourcePath sourcePath, String title,
+    public static Document index(String projectId, SourcePath sourcePath, String title,
                                  DocumentType type, DocumentContent content,
                                  Instant sourceModifiedAt) {
         Document doc = new Document(DocumentId.generate(), projectId, sourcePath,
@@ -60,7 +59,7 @@ public class Document {
         return doc;
     }
 
-    public static Document reconstitute(DocumentId id, ProjectId projectId, SourcePath sourcePath,
+    public static Document reconstitute(DocumentId id, String projectId, SourcePath sourcePath,
                                         String title, DocumentType type, DocumentContent content,
                                         EmbeddingVector embedding, Instant indexedAt,
                                         Instant sourceModifiedAt, boolean stale,
@@ -139,7 +138,7 @@ public class Document {
     // ── accessors ───────────────────────────────────────────────
 
     public DocumentId              id()               { return id; }
-    public ProjectId              projectId()         { return projectId; }
+    public String                 projectId()         { return projectId; }
     public SourcePath             sourcePath()        { return sourcePath; }
     public String                 title()             { return title; }
     public DocumentType           type()              { return type; }

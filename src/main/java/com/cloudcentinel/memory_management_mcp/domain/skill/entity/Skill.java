@@ -6,7 +6,6 @@ import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.ChunkNam
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.SkillContent;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.SkillId;
-import com.cloudcentinel.memory_management_mcp.domain.user.valueobject.UserId;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,40 +19,34 @@ public class Skill {
     private final String    name;
     private SkillContent    content;
     private EmbeddingVector embedding;
-    private final UserId    createdBy;
     private boolean         active;
     private Instant         syncedAt;
 
-    /** Sub-archivos del skill — cada uno con su propio embedding (RAG). */
-    private final List<SkillChunk> chunks = new ArrayList<>();
+    private final List<SkillChunk> chunks      = new ArrayList<>();
+    private final List<Object>     domainEvents = new ArrayList<>();
 
-    private final List<Object> domainEvents = new ArrayList<>();
-
-    private Skill(SkillId id, String name, SkillContent content, UserId createdBy) {
-        this.id        = id;
-        this.name      = name;
-        this.content   = content;
-        this.createdBy = createdBy;
-        this.active    = true;
-        this.syncedAt  = Instant.now();
+    private Skill(SkillId id, String name, SkillContent content) {
+        this.id       = id;
+        this.name     = name;
+        this.content  = content;
+        this.active   = true;
+        this.syncedAt = Instant.now();
     }
 
-    public static Skill create(String name, SkillContent content, UserId createdBy) {
-        return new Skill(SkillId.generate(), name, content, createdBy);
+    public static Skill create(String name, SkillContent content) {
+        return new Skill(SkillId.generate(), name, content);
     }
 
     public static Skill reconstitute(SkillId id, String name, SkillContent content,
-                                     EmbeddingVector embedding, UserId createdBy,
+                                     EmbeddingVector embedding,
                                      boolean active, Instant syncedAt, List<SkillChunk> chunks) {
-        Skill skill = new Skill(id, name, content, createdBy);
+        Skill skill = new Skill(id, name, content);
         skill.embedding = embedding;
         skill.active    = active;
         skill.syncedAt  = syncedAt;
         skill.chunks.addAll(chunks);
         return skill;
     }
-
-    // ── main content ────────────────────────────────────────────
 
     public boolean needsEmbedding() { return embedding == null; }
 
@@ -68,11 +61,7 @@ public class Skill {
         domainEvents.add(new SkillSynced(this.id, this.name));
     }
 
-    public void assignEmbedding(EmbeddingVector embedding) {
-        this.embedding = embedding;
-    }
-
-    // ── chunks ──────────────────────────────────────────────────
+    public void assignEmbedding(EmbeddingVector embedding) { this.embedding = embedding; }
 
     public void syncChunk(ChunkName name, SkillContent content, int position) {
         Optional<SkillChunk> existing = chunks.stream()
@@ -82,7 +71,7 @@ public class Skill {
         if (existing.isPresent()) {
             SkillChunk chunk = existing.get();
             if (chunk.hasContentChangedFrom(content)) {
-                chunk.updateContent(content, null); // embedding se asignará después
+                chunk.updateContent(content, null);
                 domainEvents.add(new SkillChunkSynced(this.id, name));
             }
         } else {
@@ -95,8 +84,6 @@ public class Skill {
         return chunks.stream().filter(SkillChunk::needsEmbedding).toList();
     }
 
-    // ── lifecycle ───────────────────────────────────────────────
-
     public void deactivate() { this.active = false; }
 
     public List<Object> pullEvents() {
@@ -105,12 +92,11 @@ public class Skill {
         return Collections.unmodifiableList(events);
     }
 
-    public SkillId         id()        { return id; }
-    public String          name()      { return name; }
-    public SkillContent    content()   { return content; }
-    public EmbeddingVector embedding() { return embedding; }
-    public UserId          createdBy() { return createdBy; }
-    public boolean         isActive()  { return active; }
-    public Instant         syncedAt()  { return syncedAt; }
-    public List<SkillChunk> chunks()   { return Collections.unmodifiableList(chunks); }
+    public SkillId          id()        { return id; }
+    public String           name()      { return name; }
+    public SkillContent     content()   { return content; }
+    public EmbeddingVector  embedding() { return embedding; }
+    public boolean          isActive()  { return active; }
+    public Instant          syncedAt()  { return syncedAt; }
+    public List<SkillChunk> chunks()    { return Collections.unmodifiableList(chunks); }
 }

@@ -5,7 +5,6 @@ import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChange
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.MemoryChangeRepository;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.infrastructure.embedding.EmbeddingService;
 import org.springframework.stereotype.Service;
@@ -27,7 +26,7 @@ public class IndexMemoryChangeHandler {
     public record HunkInput(int linesStart, int linesEnd, String symbol, String changeType, String hunkDiff) {}
 
     public record Command(
-            ProjectId projectId,
+            String projectId,
             String commitHash,
             String branch,
             String author,
@@ -60,12 +59,12 @@ public class IndexMemoryChangeHandler {
 
         if (cmd.hunks() != null) {
             for (HunkInput h : cmd.hunks()) {
-                change.addHunk(new MemoryChangeHunk(h.linesStart(), h.linesEnd(), h.symbol(), h.changeType(), h.hunkDiff()));
+                change.addHunk(new MemoryChangeHunk(
+                        h.linesStart(), h.linesEnd(), h.symbol(), h.changeType(), h.hunkDiff()));
             }
         }
 
-        String embedText = buildEmbedText(cmd);
-        EmbeddingVector vector = embeddingService.embed(embedText);
+        EmbeddingVector vector = embeddingService.embed(buildEmbedText(cmd));
         change.assignEmbedding(vector);
 
         repository.save(change);

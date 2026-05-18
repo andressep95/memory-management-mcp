@@ -11,12 +11,10 @@ public class McpToolsConfiguration {
     @Bean
     public ToolCallbackProvider mcpToolCallbackProvider(
             SkillMcpTools skillTools,
-            UserMcpTools userTools,
-            ProjectMcpTools projectTools,
             MemoryMcpTools memoryTools) {
 
         return MethodToolCallbackProvider.builder()
-                .toolObjects(skillTools, userTools, projectTools, memoryTools)
+                .toolObjects(skillTools, memoryTools)
                 .build();
     }
 }

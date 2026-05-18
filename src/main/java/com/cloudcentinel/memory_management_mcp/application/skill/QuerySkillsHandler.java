@@ -1,6 +1,5 @@
 package com.cloudcentinel.memory_management_mcp.application.skill;
 
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.repository.ScoredChunk;
 import com.cloudcentinel.memory_management_mcp.domain.skill.repository.SkillRepository;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
@@ -20,7 +19,7 @@ public class QuerySkillsHandler {
         this.embeddingService = embeddingService;
     }
 
-    public record Query(String prompt, ProjectId projectId, int limit) {}
+    public record Query(String prompt, String projectId, int limit) {}
 
     public List<ScoredChunk> handle(Query query) {
         EmbeddingVector queryVector = embeddingService.embed(query.prompt());

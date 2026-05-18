@@ -5,7 +5,6 @@ import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChange
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.MemoryChangeRepository;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
-import com.cloudcentinel.memory_management_mcp.domain.project.valueobject.ProjectId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.infrastructure.embedding.EmbeddingService;
 import org.springframework.stereotype.Service;
@@ -43,7 +42,7 @@ public class BatchIndexMemoryHandler {
             List<HunkInput> hunks
     ) {}
 
-    public record Command(ProjectId projectId, List<EntryCommand> entries) {}
+    public record Command(String projectId, List<EntryCommand> entries) {}
 
     public record Result(int inserted, int skipped) {}
 
@@ -64,7 +63,7 @@ public class BatchIndexMemoryHandler {
         return new Result(inserted, command.entries().size() - inserted);
     }
 
-    private int processChunk(ProjectId projectId, List<EntryCommand> chunk) {
+    private int processChunk(String projectId, List<EntryCommand> chunk) {
         List<String> embedTexts = chunk.stream()
                 .map(e -> buildEmbedText(e.intent(), e.what(), e.why(), e.filePath()))
                 .toList();
