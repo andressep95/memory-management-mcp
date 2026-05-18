@@ -1,0 +1,188 @@
+mcp: "1.0"
+info:
+  title: Memory Management MCP
+  description: |
+    MCP tools exposed by the Memory Management server.
+    Agents use these tools to query memory, find skills, and set up new projects.
+
+    **Insertions** (memory indexing) are done via HTTP REST — see api/openapi.yaml.
+    **Queries and setup** are done via MCP tools — documented here.
+  version: 1.0.0
+  transport: stdio / http-sse
+  serverUrl: http://localhost:8080
+
+tools:
+
+  # ── Memory ──────────────────────────────────────────────────────────────────
+  - name: queryMemory
+    group: memory
+    status: active
+    callers: [agent]
+    description: >
+      Search the project's indexed git history by semantic similarity.
+      Returns commits and file changes matching the intent of the query.
+      Use this to find prior implementations, recent changes, or the reasoning
+      behind past decisions (why a change was made).
+    input:
+      required: [prompt, projectId, limit]
+      properties:
+        prompt:
+          type: string
+          description: Natural language description of what you are looking for
+        projectId:
+          type: string
+          format: uuid
+          description: Project UUID (from POST /api/projects)
+        limit:
+          type: integer
+          description: Max results to return (1–10 recommended)
+    output:
+      type: array
+      items:
+        $ref: "#/schemas/MemoryMatchResult"
+
+  - name: getIndexedCommits
+    group: memory
+    status: active
+    callers: [agent]
+    description: >
+      Returns the set of commit hashes already indexed for this project.
+      Call this at session start to diff against git log and determine
+      which commits still need to be indexed via POST /internal/memory/batch.
+    input:
+      required: [projectId]
+      properties:
+        projectId:
+          type: string
+          format: uuid
+          description: Project UUID (from POST /api/projects)
+    output:
+      type: array
+      uniqueItems: true
+      items:
+        type: string
+        description: Git commit hash
+
+  # ── Skills ──────────────────────────────────────────────────────────────────
+  - name: querySkills
+    group: skills
+    status: active
+    callers: [agent]
+    description: >
+      Search for relevant skill content using semantic similarity.
+      Returns skill chunks (sub-documents) scoped to skills enabled for the project.
+      Use this to find agent skills, instructions, or patterns relevant to a task.
+      Always call this before performing a task to find applicable skill guidelines.
+    input:
+      required: [prompt, projectId, limit]
+      properties:
+        prompt:
+          type: string
+          description: Natural language description of the task or topic
+        projectId:
+          type: string
+          format: uuid
+          description: Project UUID — scopes results to skills enabled for this project
+        limit:
+          type: integer
+          description: Max results to return (1–10 recommended)
+    output:
+      type: array
+      items:
+        $ref: "#/schemas/ChunkMatchResult"
+
+  # ── Setup ───────────────────────────────────────────────────────────────────
+  - name: setupProject
+    group: setup
+    status: active
+    callers: [agent]
+    description: >
+      Initialize the agent environment for a repository.
+      Creates .agents/config.json, scripts, hooks, and rules.md.
+      Returns a blueprint with all files and instructions for the agent to apply.
+      Ask the user for their API key before calling this tool.
+      Ask the user for the MCP server URL (default: http://localhost:8080) if not local.
+      Call this once per project. Calling again is safe — returns alreadySetup=true if already configured.
+    input:
+      required: [apiKey, serverUrl]
+      properties:
+        apiKey:
+          type: string
+          description: Project API key — ask the user to provide it
+        serverUrl:
+          type: string
+          description: "MCP server base URL, e.g. http://localhost:8080"
+    output:
+      $ref: "#/schemas/SetupBlueprint"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEMAS
+# ─────────────────────────────────────────────────────────────────────────────
+schemas:
+
+  MemoryMatchResult:
+    description: A single file-level git change matching a memory query
+    properties:
+      commitHash: { type: string }
+      filePath:   { type: string }
+      branch:     { type: string }
+      author:     { type: string }
+      intent:     { type: string, description: "feat, fix, refactor, docs, etc." }
+      what:       { type: string }
+      why:        { type: string, nullable: true }
+      language:   { type: string }
+      tags:       { type: array, items: { type: string } }
+      score:      { type: number, format: double }
+
+  ChunkMatchResult:
+    description: A skill sub-document matching a skills query
+    properties:
+      skillName:  { type: string }
+      chunkName:  { type: string }
+      content:    { type: string }
+      position:   { type: integer }
+      score:      { type: number, format: double }
+
+  SetupBlueprint:
+    description: Blueprint returned by setupProject — agent applies it in order
+    properties:
+      projectName:
+        type: string
+      alreadySetup:
+        type: boolean
+        description: True if the project was already configured — no action needed
+      files:
+        type: array
+        items: { $ref: "#/schemas/FileEntry" }
+      mkdirs:
+        type: array
+        items: { type: string, description: Directory path to create }
+      symlinks:
+        type: array
+        items: { $ref: "#/schemas/SymlinkEntry" }
+      gitHooks:
+        type: array
+        items: { $ref: "#/schemas/GitHookEntry" }
+      gitignoreAppend:
+        type: string
+        nullable: true
+        description: Content to append to .gitignore
+      nextSteps:
+        type: string
+        description: Instructions for the agent to apply the blueprint
+
+  FileEntry:
+    properties:
+      path:       { type: string }
+      content:    { type: string }
+      executable: { type: boolean }
+
+  SymlinkEntry:
+    properties:
+      link:   { type: string, description: Symlink path to create }
+      target: { type: string, description: Target the symlink points to }
+
+  GitHookEntry:
+    properties:
+      fromScaffold: { type: string, description: Source file from the blueprint }
+      toHook:       { type: string, description: Destination in .git/hooks/ }

@@ -23,6 +23,7 @@ task → [hook injects memory + skill hint] → load skill → execute → commi
 | `endpoint-trace` | Generates code-level trace documents for each HTTP endpoint, mapping the full call chain from the controller inward through every component it touches (services, repositories, AWS clients, shared utilities). Output lives in docs/traces/ and is meant for developers navigating the codebase, not end users. Trigger: When documenting a new endpoint at the code level, auditing dependencies of an existing endpoint, or creating an endpoint-to-component map. | [SKILL.md](.agents/skills/endpoint-trace/SKILL.md) |
 | `feature-docs` | When a feature is marked as complete in api/openapi.yaml, generates a Markdown usage-flow document in docs/features/ explaining how to use it end-to-end. Trigger: After updating api/openapi.yaml with a completed endpoint. | [SKILL.md](.agents/skills/feature-docs/SKILL.md) |
 | `find-skills` | Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill. | [SKILL.md](.agents/skills/find-skills/SKILL.md) |
+| `mcp-tools-doc` | Keeps api/mcp-tools.yaml in sync with the @Tool methods exposed in src/.../infrastructure/mcp/. Trigger: After adding, modifying, or removing any MCP tool method. | [SKILL.md](.agents/skills/mcp-tools-doc/SKILL.md) |
 | `openapi` | Keeps api/openapi.yaml in sync with the Spring controllers in src/main/java. Trigger: After adding, modifying, or deleting any HTTP endpoint or changing a request/response schema. | [SKILL.md](.agents/skills/openapi/SKILL.md) |
 | `query-memory` | Searches agent memory by semantic similarity via ChromaDB. Trigger: Search codebase symbols by intent or behavior rather than exact name. | [SKILL.md](.agents/skills/query-memory/SKILL.md) |
 | `scan-memory` | Scans the full git history and indexes change records directly into ChromaDB for semantic search. Trigger: First-time setup, empty Chroma, after major refactors. | [SKILL.md](.agents/skills/scan-memory/SKILL.md) |
@@ -94,19 +95,26 @@ When performing these actions, ALWAYS load the corresponding skill FIRST:
 | Stage and commit changes | `commit` |
 | Teach the agent how to do X | `skill-creator` |
 | Write a commit message | `commit` |
+| add mcp tool documentation | `mcp-tools-doc` |
 | be brief | `caveman` |
 | caveman mode | `caveman` |
 | crear endpoint REST, API HTTP | `endpoint-trace` |
 | create code-level endpoint doc | `endpoint-trace` |
 | document endpoint code trace | `endpoint-trace` |
+| document mcp tools | `mcp-tools-doc` |
 | documentar endpoint, trazar dependencias | `endpoint-trace` |
+| documenting mcp tools | `mcp-tools-doc` |
 | less tokens | `caveman` |
 | map endpoint call chain | `endpoint-trace` |
 | mapear cadena de llamadas de un endpoint | `endpoint-trace` |
+| mcp tool spec | `mcp-tools-doc` |
+| mcp tools out of sync | `mcp-tools-doc` |
 | reduce token usage | `caveman` |
+| sync mcp tools spec | `mcp-tools-doc` |
 | talk like caveman | `caveman` |
 | token efficiency | `caveman` |
 | trace endpoint dependencies | `endpoint-trace` |
+| update mcp-tools.yaml | `mcp-tools-doc` |
 | use caveman | `caveman` |
 
 ## Architecture Decision Records
