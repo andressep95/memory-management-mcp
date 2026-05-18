@@ -81,6 +81,9 @@ public class SetupMcpTools {
         files.add(new FileEntry(".agents/config.json",
                 buildConfig(apiKey, resolvedUrl), false));
 
+        files.add(new FileEntry(".agents/memory.state.json",
+                "{\n  \"initialized\": false,\n  \"last_indexed_commit\": null,\n  \"last_indexed_at\": null\n}\n", false));
+
         loadScaffoldFiles(files, resolvedUrl, apiKey);
 
         project.markSetupCompleted();
