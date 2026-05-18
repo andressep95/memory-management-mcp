@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [5a1eb7c] — 2026-05-17
+
+**fix(setup): include memory.state.json in setupProject blueprint**
+
+> what: setupProject now delivers .agents/memory.state.json with
+> initialized=false so session-start.sh finds the state file
+> on first restart without creating it at runtime
+> why: the local project has no knowledge of which files the MCP
+
+#### Added
+
+- `src/main/resources/scaffold/memory.state.json`
+
+#### Changed
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SetupMcpTools.java`
+
+---
+
 ### [d281b03] — 2026-05-17
 
 **feat(memory): auto-bootstrap Chroma on session start via state file**
