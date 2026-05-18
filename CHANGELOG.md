@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [ea36799] — 2026-05-17
+
+**feat(setup): add setupProject MCP tool and project scaffold**
+
+> what: Adds setupProject MCP tool that validates an API key and returns
+> a full blueprint (files, hooks, symlinks, git hooks) to initialize
+> the agent environment in any repository; bundles scaffold templates
+> in the jar under src/main/resources/scaffold/; adds setup_completed_at
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SetupMcpTools.java`
+- `src/main/resources/scaffold/.claude/settings.json`
+- `src/main/resources/scaffold/.kiro/hooks/post-commit-clear.yaml`
+- `src/main/resources/scaffold/.kiro/hooks/session-start.yaml`
+- `src/main/resources/scaffold/.kiro/hooks/validate-commit.yaml`
+- `src/main/resources/scaffold/manifest.json`
+- `src/main/resources/scaffold/rules.md`
+- `src/main/resources/scaffold/scripts/extract_changes.py`
+- `src/main/resources/scaffold/scripts/generate-changelog.py`
+- `src/main/resources/scaffold/scripts/post-commit`
+- `src/main/resources/scaffold/scripts/session-start.sh`
+- `src/main/resources/scaffold/scripts/validate-commit.sh`
+
+#### Changed
+
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/project/entity/Project.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/project/repository/ProjectRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/McpToolsConfiguration.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/project/ProjectRepositoryAdapter.java`
+
+---
+
 ### [c85e7a3] — 2026-05-17
 
 **feat(project): add project registration endpoint and API key auth**
