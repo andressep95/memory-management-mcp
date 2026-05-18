@@ -34,4 +34,4 @@ build/
 
 
 ## agents-memory
-.agents/memory
+.agents/memory.agents/config.json
