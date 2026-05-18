@@ -2,7 +2,10 @@ package com.cloudcentinel.memory_management_mcp.infrastructure.rest;
 
 import com.cloudcentinel.memory_management_mcp.application.memory.BatchIndexMemoryHandler;
 import com.cloudcentinel.memory_management_mcp.application.memory.GetIndexedCommitsHandler;
+import com.cloudcentinel.memory_management_mcp.domain.project.repository.ProjectRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -13,13 +16,16 @@ import java.util.Set;
 @RequestMapping("/internal/memory")
 public class MemoryRestController {
 
-    private final BatchIndexMemoryHandler batchHandler;
+    private final BatchIndexMemoryHandler  batchHandler;
     private final GetIndexedCommitsHandler commitsHandler;
+    private final ProjectRepository        projectRepository;
 
     public MemoryRestController(BatchIndexMemoryHandler batchHandler,
-                                GetIndexedCommitsHandler commitsHandler) {
-        this.batchHandler   = batchHandler;
-        this.commitsHandler = commitsHandler;
+                                GetIndexedCommitsHandler commitsHandler,
+                                ProjectRepository projectRepository) {
+        this.batchHandler      = batchHandler;
+        this.commitsHandler    = commitsHandler;
+        this.projectRepository = projectRepository;
     }
 
     public record HunkInput(int linesStart, int linesEnd, String symbol, String changeType, String hunkDiff) {}
@@ -30,12 +36,14 @@ public class MemoryRestController {
             List<String> tags, List<HunkInput> hunks
     ) {}
 
-    public record BatchRequest(String projectId, List<EntryInput> entries) {}
+    public record BatchRequest(String apiKey, List<EntryInput> entries) {}
     public record BatchResponse(int inserted, int skipped) {}
 
     @PostMapping("/batch")
     public Mono<BatchResponse> batchIndex(@RequestBody BatchRequest req) {
         return Mono.fromCallable(() -> {
+            String projectId = resolveProjectId(req.apiKey());
+
             List<BatchIndexMemoryHandler.EntryCommand> commands = req.entries().stream()
                     .map(e -> new BatchIndexMemoryHandler.EntryCommand(
                             e.commitHash(), e.branch(), e.author(), e.filePath(),
@@ -50,15 +58,22 @@ public class MemoryRestController {
                     .toList();
 
             BatchIndexMemoryHandler.Result result = batchHandler.handle(
-                    new BatchIndexMemoryHandler.Command(req.projectId(), commands));
+                    new BatchIndexMemoryHandler.Command(projectId, commands));
 
             return new BatchResponse(result.inserted(), result.skipped());
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/commits")
-    public Mono<Set<String>> getIndexedCommits(@RequestParam String projectId) {
-        return Mono.fromCallable(() -> commitsHandler.handle(projectId))
+    public Mono<Set<String>> getIndexedCommits(@RequestParam String apiKey) {
+        return Mono.fromCallable(() -> commitsHandler.handle(resolveProjectId(apiKey)))
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private String resolveProjectId(String apiKey) {
+        return projectRepository.findByApiKey(apiKey)
+                .map(p -> p.id().toString())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        "Unknown API key"));
     }
 }

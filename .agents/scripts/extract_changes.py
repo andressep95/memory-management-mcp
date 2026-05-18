@@ -151,11 +151,11 @@ def resolve_branch(ref: str) -> str:
 
 # ── Oracle MCP REST helpers ──────────────────────────────────────────────────
 
-def oracle_get_indexed_commits(project_id: str, base_url: str) -> set[str]:
+def oracle_get_indexed_commits(api_key: str, base_url: str) -> set[str]:
     """Returns set of commit hashes already indexed in Oracle."""
     try:
         import urllib.request
-        url = f"{base_url}/internal/memory/commits?projectId={project_id}"
+        url = f"{base_url}/internal/memory/commits?apiKey={api_key}"
         with urllib.request.urlopen(url, timeout=10) as resp:
             return set(json.loads(resp.read()))
     except Exception as e:
@@ -163,13 +163,13 @@ def oracle_get_indexed_commits(project_id: str, base_url: str) -> set[str]:
         return set()
 
 
-def oracle_batch_push(project_id: str, entries: list[dict], base_url: str) -> tuple[int, int]:
+def oracle_batch_push(api_key: str, entries: list[dict], base_url: str) -> tuple[int, int]:
     """POST a batch of entries to /internal/memory/batch. Returns (inserted, skipped)."""
     if not entries:
         return 0, 0
     try:
         import urllib.request
-        payload = json.dumps({"projectId": project_id, "entries": entries}).encode()
+        payload = json.dumps({"apiKey": api_key, "entries": entries}).encode()
         req = urllib.request.Request(
             f"{base_url}/internal/memory/batch",
             data=payload,
@@ -335,10 +335,10 @@ def main() -> None:
     p.add_argument("--all",        action="store_true")
     p.add_argument("--chroma",     default=".agents/memory/chroma")
     p.add_argument("--collection", default="changes")
-    p.add_argument("--mcp-url",    default="http://localhost:8080",
+    p.add_argument("--mcp-url",  default="http://localhost:8080",
                    help="Base URL of the MCP Spring Boot server")
-    p.add_argument("--project-id", default="",
-                   help="Oracle project UUID — obtain once via MCP registerOrGetUser + getOrCreateProject")
+    p.add_argument("--api-key", default="",
+                   help="Project API key — obtain once via POST /api/projects")
     p.add_argument("--no-oracle",  action="store_true", help="Skip Oracle writes")
     p.add_argument("--no-chroma",  action="store_true", help="Skip Chroma writes")
     args = p.parse_args()
@@ -366,16 +366,16 @@ def main() -> None:
     project_name = Path(run("git rev-parse --show-toplevel")).name
 
     # ── Oracle setup ──────────────────────────────────────────────────────
-    oracle_project_id = args.project_id.strip() or None
-    if not args.no_oracle and not oracle_project_id:
-        print("[oracle] No --project-id provided — Oracle writes disabled.", file=sys.stderr)
-        print("[oracle] Run registerOrGetUser + getOrCreateProject via MCP to get a project UUID.", file=sys.stderr)
+    oracle_api_key = args.api_key.strip() or None
+    if not args.no_oracle and not oracle_api_key:
+        print("[oracle] No --api-key provided — Oracle writes disabled.", file=sys.stderr)
+        print("[oracle] Run: curl -s -X POST http://localhost:8080/api/projects -H 'Content-Type: application/json' -d '{\"name\":\"<project-name>\"}' | jq .apiKey", file=sys.stderr)
 
     # ── Indexed sets for diff ─────────────────────────────────────────────
     oracle_indexed: set[str] = set()
-    if oracle_project_id:
+    if oracle_api_key:
         print("[oracle] Fetching already-indexed commits...")
-        oracle_indexed = oracle_get_indexed_commits(oracle_project_id, args.mcp_url)
+        oracle_indexed = oracle_get_indexed_commits(oracle_api_key, args.mcp_url)
         print(f"[oracle] {len(oracle_indexed)} commits already indexed.")
 
     # ── Process commits ───────────────────────────────────────────────────
@@ -404,27 +404,27 @@ def main() -> None:
                 chroma_total += push_to_chroma(entries, chroma_existing, collection)
 
             # Oracle — accumulate if not already indexed
-            if oracle_project_id and commit_hash not in oracle_indexed:
+            if oracle_api_key and commit_hash not in oracle_indexed:
                 oracle_pending.extend(to_oracle_entry(e) for e in entries)
 
             # Flush Oracle in real chunks of MCP_BATCH_SIZE (not all at once)
-            while oracle_project_id and len(oracle_pending) >= MCP_BATCH_SIZE:
+            while oracle_api_key and len(oracle_pending) >= MCP_BATCH_SIZE:
                 batch = oracle_pending[:MCP_BATCH_SIZE]
                 del oracle_pending[:MCP_BATCH_SIZE]
-                ins, _ = oracle_batch_push(oracle_project_id, batch, args.mcp_url)
+                ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
                 oracle_total += ins
 
         # Final Oracle flush — drain any remaining entries
-        while oracle_pending and oracle_project_id:
+        while oracle_pending and oracle_api_key:
             batch = oracle_pending[:MCP_BATCH_SIZE]
             del oracle_pending[:MCP_BATCH_SIZE]
-            ins, _ = oracle_batch_push(oracle_project_id, batch, args.mcp_url)
+            ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
             oracle_total += ins
 
         print(f"\n[memory] Done. {total} commits processed.")
         if collection is not None:
             print(f"  Chroma: {chroma_total} file(s) indexed.")
-        if oracle_project_id:
+        if oracle_api_key:
             print(f"  Oracle: {oracle_total} file(s) indexed.")
 
     else:
@@ -444,15 +444,15 @@ def main() -> None:
                 e["project"] = project_name
             chroma_n = push_to_chroma(entries, chroma_existing, collection)
 
-        if oracle_project_id and commit_hash not in oracle_indexed:
+        if oracle_api_key and commit_hash not in oracle_indexed:
             oracle_entries = [to_oracle_entry(e) for e in entries]
-            ins, _ = oracle_batch_push(oracle_project_id, oracle_entries, args.mcp_url)
+            ins, _ = oracle_batch_push(oracle_api_key, oracle_entries, args.mcp_url)
             oracle_n = ins
 
         parts = []
         if collection is not None:
             parts.append(f"Chroma={chroma_n}")
-        if oracle_project_id:
+        if oracle_api_key:
             parts.append(f"Oracle={oracle_n}")
         print(f"[memory] {commit_hash}: {', '.join(parts)} file(s) indexed.")
 
