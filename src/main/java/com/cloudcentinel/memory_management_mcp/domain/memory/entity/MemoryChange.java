@@ -22,6 +22,7 @@ public class MemoryChange {
     private final ChangeIntent           intent;
     private final String                 what;
     private final String                 why;
+    private final String                 kind;
     private final String                 language;
     private final List<String>           tags;
     private final String                 rawDiff;
@@ -36,7 +37,7 @@ public class MemoryChange {
     private MemoryChange(MemoryChangeId id, String projectId, CommitHash commitHash,
                          String branch, String author, String filePath,
                          ChangeIntent intent, String what, String why,
-                         String language, List<String> tags,
+                         String kind, String language, List<String> tags,
                          String rawDiff, String contentBefore, String contentAfter,
                          Instant createdAt) {
         this.id            = id;
@@ -48,6 +49,7 @@ public class MemoryChange {
         this.intent        = intent;
         this.what          = what;
         this.why           = why;
+        this.kind          = kind;
         this.language      = language;
         this.tags          = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
         this.rawDiff       = rawDiff;
@@ -59,12 +61,12 @@ public class MemoryChange {
     public static MemoryChange index(String projectId, CommitHash commitHash,
                                      String branch, String author, String filePath,
                                      ChangeIntent intent, String what, String why,
-                                     String language, List<String> tags,
+                                     String kind, String language, List<String> tags,
                                      String rawDiff, String contentBefore, String contentAfter) {
         MemoryChange change = new MemoryChange(
                 MemoryChangeId.generate(), projectId, commitHash,
                 branch, author, filePath, intent, what, why,
-                language, tags, rawDiff, contentBefore, contentAfter,
+                kind, language, tags, rawDiff, contentBefore, contentAfter,
                 Instant.now()
         );
         change.domainEvents.add(new CommitIndexed(change.id, change.projectId, change.commitHash));
@@ -74,14 +76,14 @@ public class MemoryChange {
     public static MemoryChange reconstitute(MemoryChangeId id, String projectId,
                                             CommitHash commitHash, String branch, String author,
                                             String filePath, ChangeIntent intent,
-                                            String what, String why, String language,
+                                            String what, String why, String kind, String language,
                                             List<String> tags, String rawDiff,
                                             String contentBefore, String contentAfter,
                                             EmbeddingVector embedding, Instant createdAt,
                                             List<MemoryChangeHunk> hunks) {
         MemoryChange change = new MemoryChange(
                 id, projectId, commitHash, branch, author, filePath,
-                intent, what, why, language, tags,
+                intent, what, why, kind, language, tags,
                 rawDiff, contentBefore, contentAfter, createdAt
         );
         change.embedding = embedding;
@@ -114,6 +116,7 @@ public class MemoryChange {
     public ChangeIntent           intent()        { return intent; }
     public String                 what()          { return what; }
     public String                 why()           { return why; }
+    public String                 kind()          { return kind; }
     public String                 language()      { return language; }
     public List<String>           tags()          { return Collections.unmodifiableList(tags); }
     public String                 rawDiff()       { return rawDiff; }

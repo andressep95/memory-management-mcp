@@ -34,13 +34,22 @@ public class IndexMemoryChangeHandler {
             String intent,
             String what,
             String why,
+            String kind,
             String language,
             List<String> tags,
             String rawDiff,
             String contentBefore,
             String contentAfter,
             List<HunkInput> hunks
-    ) {}
+    ) {
+        public Command(String projectId, String commitHash, String branch, String author,
+                       String filePath, String intent, String what, String why,
+                       String language, List<String> tags, String rawDiff,
+                       String contentBefore, String contentAfter, List<HunkInput> hunks) {
+            this(projectId, commitHash, branch, author, filePath, intent, what, why,
+                 null, language, tags, rawDiff, contentBefore, contentAfter, hunks);
+        }
+    }
 
     @Transactional
     public MemoryChange handle(Command cmd) {
@@ -50,10 +59,13 @@ public class IndexMemoryChangeHandler {
             return null;
         }
 
+        String kind = (cmd.kind() != null && !cmd.kind().isBlank())
+                ? cmd.kind()
+                : KindClassifier.classify(cmd.filePath());
         MemoryChange change = MemoryChange.index(
                 cmd.projectId(), hash, cmd.branch(), cmd.author(),
                 cmd.filePath(), ChangeIntent.fromString(cmd.intent()),
-                cmd.what(), cmd.why(), cmd.language(), cmd.tags(),
+                cmd.what(), cmd.why(), kind, cmd.language(), cmd.tags(),
                 cmd.rawDiff(), cmd.contentBefore(), cmd.contentAfter()
         );
 

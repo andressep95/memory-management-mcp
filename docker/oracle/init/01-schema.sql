@@ -130,6 +130,7 @@ CREATE TABLE memory_changes (
     branch          VARCHAR2(255)            NOT NULL,
     author          VARCHAR2(255)            NOT NULL,
     file_path       VARCHAR2(1000)           NOT NULL,
+    kind            VARCHAR2(10)            ,
     intent          VARCHAR2(50)            ,
     what            CLOB                     NOT NULL,
     why             CLOB                    ,
@@ -142,7 +143,8 @@ CREATE TABLE memory_changes (
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     CONSTRAINT pk_memory_changes             PRIMARY KEY (id),
     CONSTRAINT fk_memory_changes_project     FOREIGN KEY (project_id) REFERENCES projects (id),
-    CONSTRAINT uk_memory_changes_commit_file UNIQUE (project_id, commit_hash, file_path)
+    CONSTRAINT uk_memory_changes_commit_file UNIQUE (project_id, commit_hash, file_path),
+    CONSTRAINT ck_memory_changes_kind        CHECK (kind IN ('code', 'doc', 'config'))
 );
 
 
@@ -263,6 +265,7 @@ CREATE INDEX idx_user_skill_prefs_project ON user_skill_prefs (project_id, git_u
 CREATE INDEX idx_memory_changes_project ON memory_changes (project_id, created_at DESC);
 CREATE INDEX idx_memory_changes_commit  ON memory_changes (commit_hash);
 CREATE INDEX idx_memory_changes_file    ON memory_changes (project_id, file_path);
+CREATE INDEX idx_memory_changes_kind    ON memory_changes (project_id, kind);
 
 -- memory_change_hunks
 CREATE INDEX idx_memory_change_hunks_mc    ON memory_change_hunks (memory_change_id);
@@ -308,6 +311,7 @@ COMMENT ON COLUMN memory_changes.project_id     IS 'FK to PROJECTS.id. Scopes me
 COMMENT ON COLUMN memory_changes.intent         IS 'Commit type: feat, fix, refactor, docs, test, chore, perf, style.';
 COMMENT ON COLUMN memory_changes.what           IS 'What changed. Parsed from commit body (what: line). Key field for semantic search.';
 COMMENT ON COLUMN memory_changes.why            IS 'Why this change was made. Parsed from commit body (why: line). Most important field for semantic search.';
+COMMENT ON COLUMN memory_changes.kind           IS 'File discriminator: code (source/test/script), doc (markdown/specs), config (build/infra). Drives queryCode and queryDocs MCP tools.';
 COMMENT ON COLUMN memory_changes.embedding      IS '384-dim vector of (intent + what + why + filePath). Enables intent-based similarity search.';
 
 COMMENT ON TABLE  memory_change_hunks               IS 'Individual @@ diff blocks of a file change. CASCADE DELETE from memory_changes. Enables granular line-range navigation.';

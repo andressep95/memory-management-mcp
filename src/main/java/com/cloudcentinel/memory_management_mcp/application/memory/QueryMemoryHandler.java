@@ -19,10 +19,17 @@ public class QueryMemoryHandler {
         this.embeddingService = embeddingService;
     }
 
-    public record Query(String prompt, String projectId, int limit) {}
+    public record Query(String prompt, String projectId, int limit, String kind) {
+        public Query(String prompt, String projectId, int limit) {
+            this(prompt, projectId, limit, null);
+        }
+    }
 
     public List<ScoredMemoryChange> handle(Query query) {
         EmbeddingVector vector = embeddingService.embed(query.prompt());
+        if (query.kind() != null && !query.kind().isBlank()) {
+            return repository.findSimilar(vector, query.projectId(), query.limit(), query.kind());
+        }
         return repository.findSimilar(vector, query.projectId(), query.limit());
     }
 }

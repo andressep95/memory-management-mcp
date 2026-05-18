@@ -77,6 +77,28 @@ def file_kind(path: str) -> str:
     return "other"
 
 
+def memory_kind(path: str) -> str:
+    """Maps a file path to 'code', 'doc', or 'config' for storage discrimination."""
+    ext   = Path(path).suffix.lower()
+    lower = path.lower()
+    CODE_EXT = {
+        ".java", ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs",
+        ".kt", ".kts", ".cs", ".cpp", ".c", ".h", ".swift", ".rb",
+        ".php", ".scala", ".clj", ".cljs", ".sql", ".sh", ".bash",
+        ".zsh", ".groovy", ".dart", ".ex", ".exs", ".hs", ".lua",
+        ".pl", ".r", ".jl", ".zig",
+    }
+    DOC_EXT = {".md", ".mdx", ".rst", ".adoc", ".txt"}
+    if ext in CODE_EXT:
+        return "code"
+    if ext in DOC_EXT:
+        return "doc"
+    if ext in {".yaml", ".yml", ".json", ".toml", ".xml"}:
+        if any(s in lower for s in ("openapi", "swagger", "api-spec", "docs/", "doc/", "spec/")):
+            return "doc"
+    return "config"
+
+
 def parse_commit_parts(intent: str) -> tuple[str, str]:
     m = re.match(r"^(\w+)(?:\(([\w/.-]+)\))?:", intent)
     return (m.group(1) if m else "", m.group(2) if m and m.group(2) else "")
@@ -210,8 +232,9 @@ def extract_commit_data(ref: str, project: str) -> tuple[str, list[dict]]:
 
     entries = []
     for file in all_files:
-        kind = file_kind(file)
-        lang = detect_language(file)
+        kind  = file_kind(file)
+        mkind = memory_kind(file)
+        lang  = detect_language(file)
 
         diff = (run(f'git diff {parent} {ref} -- "{file}" 2>/dev/null')
                 or run(f'git show {ref} -- "{file}"'))
@@ -246,6 +269,7 @@ def extract_commit_data(ref: str, project: str) -> tuple[str, list[dict]]:
             "scope":       scope,
             "file":        file,
             "file_kind":   kind,
+            "memory_kind": mkind,
             "language":    lang,
             "change_type": ctype,
             "tags":        tags,
@@ -269,6 +293,7 @@ def push_to_chroma(entries: list[dict], existing: set[str], collection) -> int:
         metadatas.append({
             "file":         e["file"],
             "file_kind":    e["file_kind"],
+            "kind":         e.get("memory_kind", "config"),
             "language":     e["language"],
             "what":         e["what"],
             "why":          e["why"],
@@ -308,6 +333,7 @@ def to_oracle_entry(e: dict) -> dict:
         "intent":     e["commit_type"] or None,
         "what":       e["what"] or e["intent"],
         "why":        e["why"] or None,
+        "kind":       e.get("memory_kind", "config"),
         "language":   e["language"],
         "tags":       e["tags"],
         "hunks": [

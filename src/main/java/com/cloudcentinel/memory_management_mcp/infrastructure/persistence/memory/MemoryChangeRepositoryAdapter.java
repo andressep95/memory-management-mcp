@@ -22,10 +22,20 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
 
     private static final String FIND_SIMILAR_SQL = """
             SELECT id, project_id, commit_hash, branch, author, file_path,
-                   intent, what, why, language, tags, created_at,
+                   kind, intent, what, why, language, tags, created_at,
                    VECTOR_DISTANCE(embedding, ?, COSINE) AS score
             FROM memory_changes
             WHERE project_id = ?
+            ORDER BY score ASC
+            FETCH FIRST ? ROWS ONLY
+            """;
+
+    private static final String FIND_SIMILAR_BY_KIND_SQL = """
+            SELECT id, project_id, commit_hash, branch, author, file_path,
+                   kind, intent, what, why, language, tags, created_at,
+                   VECTOR_DISTANCE(embedding, ?, COSINE) AS score
+            FROM memory_changes
+            WHERE project_id = ? AND kind = ?
             ORDER BY score ASC
             FETCH FIRST ? ROWS ONLY
             """;
@@ -41,9 +51,9 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
     private static final String INSERT_SQL = """
             INSERT INTO memory_changes
               (id, project_id, commit_hash, branch, author, file_path,
-               intent, what, why, language, tags, raw_diff,
+               kind, intent, what, why, language, tags, raw_diff,
                content_before, content_after, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSTIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSTIMESTAMP)
             """;
 
     private static final String UPDATE_EMBEDDING_SQL =
@@ -78,14 +88,15 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
             ps.setString(4, change.branch());
             ps.setString(5, change.author());
             ps.setString(6, change.filePath());
-            ps.setString(7, change.intent() != null ? change.intent().name() : null);
-            ps.setString(8, change.what());
-            ps.setString(9, change.why());
-            ps.setString(10, change.language());
-            ps.setString(11, change.tags().isEmpty() ? null : String.join(",", change.tags()));
-            ps.setString(12, change.rawDiff());
-            ps.setString(13, change.contentBefore());
-            ps.setString(14, change.contentAfter());
+            ps.setString(7, change.kind());
+            ps.setString(8, change.intent() != null ? change.intent().name() : null);
+            ps.setString(9, change.what());
+            ps.setString(10, change.why());
+            ps.setString(11, change.language());
+            ps.setString(12, change.tags().isEmpty() ? null : String.join(",", change.tags()));
+            ps.setString(13, change.rawDiff());
+            ps.setString(14, change.contentBefore());
+            ps.setString(15, change.contentAfter());
         });
 
         jdbcTemplate.batchUpdate(UPDATE_EMBEDDING_SQL, changes, changes.size(), (ps, change) -> {
@@ -143,40 +154,60 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
                     ps.setBytes(2, projectIdBytes);
                     ps.setInt(3, limit);
                 },
-                (rs, rowNum) -> {
-                    byte[] idBytes    = rs.getBytes("id");
-                    byte[] projIdB    = rs.getBytes("project_id");
-                    String hash       = rs.getString("commit_hash");
-                    String branch     = rs.getString("branch");
-                    String author     = rs.getString("author");
-                    String filePath   = rs.getString("file_path");
-                    String intent     = rs.getString("intent");
-                    String what       = rs.getString("what");
-                    String why        = rs.getString("why");
-                    String language   = rs.getString("language");
-                    String tags       = rs.getString("tags");
-                    Timestamp createdTs = rs.getTimestamp("created_at");
-                    double score      = rs.getDouble("score");
-
-                    List<String> tagList = (tags != null && !tags.isBlank())
-                            ? Arrays.asList(tags.split(","))
-                            : List.of();
-
-                    MemoryChange change = MemoryChange.reconstitute(
-                            new MemoryChangeId(toUuid(idBytes)),
-                            toUuid(projIdB).toString(),
-                            new CommitHash(hash),
-                            branch, author, filePath,
-                            ChangeIntent.fromString(intent),
-                            what, why, language, tagList,
-                            null, null, null,
-                            null,
-                            createdTs != null ? createdTs.toInstant() : Instant.now(),
-                            List.of()
-                    );
-                    return new ScoredMemoryChange(change, 1.0 - score);
-                }
+                (rs, rowNum) -> mapRow(rs)
         );
+    }
+
+    @Override
+    public List<ScoredMemoryChange> findSimilar(EmbeddingVector query, String projectId, int limit, String kind) {
+        Object vectorParam    = toOracleVector(query.values());
+        byte[] projectIdBytes = uuidConverter.convertToDatabaseColumn(UUID.fromString(projectId));
+
+        return jdbcTemplate.query(
+                FIND_SIMILAR_BY_KIND_SQL,
+                ps -> {
+                    ps.setObject(1, vectorParam);
+                    ps.setBytes(2, projectIdBytes);
+                    ps.setString(3, kind);
+                    ps.setInt(4, limit);
+                },
+                (rs, rowNum) -> mapRow(rs)
+        );
+    }
+
+    private ScoredMemoryChange mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
+        byte[] idBytes    = rs.getBytes("id");
+        byte[] projIdB    = rs.getBytes("project_id");
+        String hash       = rs.getString("commit_hash");
+        String branch     = rs.getString("branch");
+        String author     = rs.getString("author");
+        String filePath   = rs.getString("file_path");
+        String kind       = rs.getString("kind");
+        String intent     = rs.getString("intent");
+        String what       = rs.getString("what");
+        String why        = rs.getString("why");
+        String language   = rs.getString("language");
+        String tags       = rs.getString("tags");
+        java.sql.Timestamp createdTs = rs.getTimestamp("created_at");
+        double score      = rs.getDouble("score");
+
+        List<String> tagList = (tags != null && !tags.isBlank())
+                ? Arrays.asList(tags.split(","))
+                : List.of();
+
+        MemoryChange change = MemoryChange.reconstitute(
+                new MemoryChangeId(toUuid(idBytes)),
+                toUuid(projIdB).toString(),
+                new CommitHash(hash),
+                branch, author, filePath,
+                ChangeIntent.fromString(intent),
+                what, why, kind, language, tagList,
+                null, null, null,
+                null,
+                createdTs != null ? createdTs.toInstant() : Instant.now(),
+                List.of()
+        );
+        return new ScoredMemoryChange(change, 1.0 - score);
     }
 
     private void updateEmbedding(UUID id, float[] values) {

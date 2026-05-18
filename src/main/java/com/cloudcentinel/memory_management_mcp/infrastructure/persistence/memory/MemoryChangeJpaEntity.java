@@ -40,6 +40,9 @@ public class MemoryChangeJpaEntity {
     @Column(name = "file_path")
     private String filePath;
 
+    @Column(name = "kind")
+    private String kind;
+
     @Column(name = "intent")
     private String intent;
 
@@ -88,6 +91,7 @@ public class MemoryChangeJpaEntity {
         entity.branch        = change.branch();
         entity.author        = change.author();
         entity.filePath      = change.filePath();
+        entity.kind          = change.kind();
         entity.intent        = change.intent() != null ? change.intent().name() : null;
         entity.what          = change.what();
         entity.why           = change.why();
@@ -120,7 +124,7 @@ public class MemoryChangeJpaEntity {
                 new CommitHash(commitHash),
                 branch, author, filePath,
                 ChangeIntent.fromString(intent),
-                what, why, language, tagList,
+                what, why, kind, language, tagList,
                 rawDiff, contentBefore, contentAfter,
                 null,
                 createdAt.toInstant(),

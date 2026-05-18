@@ -37,10 +37,18 @@ public class BatchIndexMemoryHandler {
             String intent,
             String what,
             String why,
+            String kind,
             String language,
             List<String> tags,
             List<HunkInput> hunks
-    ) {}
+    ) {
+        public EntryCommand(String commitHash, String branch, String author, String filePath,
+                            String intent, String what, String why, String language,
+                            List<String> tags, List<HunkInput> hunks) {
+            this(commitHash, branch, author, filePath, intent, what, why,
+                 null, language, tags, hunks);
+        }
+    }
 
     public record Command(String projectId, List<EntryCommand> entries) {}
 
@@ -73,6 +81,9 @@ public class BatchIndexMemoryHandler {
         List<MemoryChange> changes = new ArrayList<>(chunk.size());
         for (int i = 0; i < chunk.size(); i++) {
             EntryCommand entry = chunk.get(i);
+            String kind = (entry.kind() != null && !entry.kind().isBlank())
+                    ? entry.kind()
+                    : KindClassifier.classify(entry.filePath());
             MemoryChange change = MemoryChange.index(
                     projectId,
                     new CommitHash(entry.commitHash()),
@@ -82,6 +93,7 @@ public class BatchIndexMemoryHandler {
                     ChangeIntent.fromString(entry.intent()),
                     entry.what(),
                     entry.why(),
+                    kind,
                     entry.language(),
                     entry.tags(),
                     null, null, null

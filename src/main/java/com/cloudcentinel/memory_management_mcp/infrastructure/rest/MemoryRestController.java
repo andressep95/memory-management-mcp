@@ -32,7 +32,7 @@ public class MemoryRestController {
 
     public record EntryInput(
             String commitHash, String branch, String author, String filePath,
-            String intent, String what, String why, String language,
+            String intent, String what, String why, String kind, String language,
             List<String> tags, List<HunkInput> hunks
     ) {}
 
@@ -47,7 +47,7 @@ public class MemoryRestController {
             List<BatchIndexMemoryHandler.EntryCommand> commands = req.entries().stream()
                     .map(e -> new BatchIndexMemoryHandler.EntryCommand(
                             e.commitHash(), e.branch(), e.author(), e.filePath(),
-                            e.intent(), e.what(), e.why(), e.language(), e.tags(),
+                            e.intent(), e.what(), e.why(), e.kind(), e.language(), e.tags(),
                             e.hunks() == null ? List.of()
                                     : e.hunks().stream()
                                     .map(h -> new BatchIndexMemoryHandler.HunkInput(

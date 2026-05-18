@@ -24,4 +24,6 @@ public interface MemoryChangeRepository {
     Set<String> findIndexedCommitFilePairs(String projectId);
 
     List<ScoredMemoryChange> findSimilar(EmbeddingVector query, String projectId, int limit);
+
+    List<ScoredMemoryChange> findSimilar(EmbeddingVector query, String projectId, int limit, String kind);
 }
