@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [7dc8066] — 2026-05-18
+
+**feat(memory): add prompt-guard hook and refine memory indexing**
+
+> what: Adds prompt-guard hook to scaffold, separates grants DDL, and simplifies memory batch indexing
+> why: Agents need pre-prompt validation to enforce MCP protocol and DB init needed cleaner separation
+> breaking: false
+
+#### Added
+
+- `docker/oracle/init/00-grants.sql`
+- `src/main/resources/scaffold/.kiro/hooks/prompt-guard.yaml`
+- `src/main/resources/scaffold/scripts/prompt-guard.sh`
+
+#### Changed
+
+- `api/mcp-tools.yaml`
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/BatchIndexMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/MemoryMcpTools.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/MemoryRestController.java`
+- `src/main/resources/application.yaml`
+- `src/main/resources/scaffold/.claude/settings.json`
+- `src/main/resources/scaffold/scripts/session-start.sh`
+
+---
+
 ### [2f7c271] — 2026-05-18
 
 **fix(skills): align scaffold commit skill path with SKILL.md convention**
