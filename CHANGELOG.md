@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [25a273f] — 2026-05-17
+
+**refactor(domain): simplify schema from 15 to 11 tables and remove over-engineered bounded contexts**
+
+> what: Drops domain/user, domain/project, domain/access and all associated
+> persistence/MCP adapters; replaces ProjectId UUID value object with
+> String projectId throughout memory, skill, session, and knowledge
+> bounded contexts; rewrites Oracle schema to 11 tables (projects by
+
+#### Added
+
+- `.agents/scripts/__pycache__/extract_changes.cpython-313.pyc`
+
+#### Changed
+
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/BatchIndexMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/GetIndexedCommitsHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/IndexMemoryChangeHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/QueryMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/skill/QuerySkillsHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/skill/SyncSkillHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/entity/Document.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/event/DocumentIndexed.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/event/DocumentMarkedStale.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/event/DocumentUpdated.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/knowledge/repository/DocumentRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/entity/MemoryChange.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/event/CommitIndexed.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/MemoryChangeRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/entity/Session.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/event/SessionStarted.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/session/repository/SessionRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/entity/Skill.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/skill/repository/SkillRepository.java`
+- _…and 9 more_
+
+#### Removed
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/project/CreateProjectHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/project/GetOrCreateProjectHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/user/RegisterOrGetUser.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/user/RegisterOrGetUserHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/entity/UserPreference.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/entity/UserPrivateSkill.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/entity/UserProjectRole.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/event/PreferenceConfigured.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/event/PrivateSkillAdded.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/event/RoleGranted.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/repository/UserPreferenceRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/repository/UserPrivateSkillRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/repository/UserProjectRoleRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/PreferenceId.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/Role.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/SelectionMode.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/UserPrivateSkillId.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/access/valueobject/UserProjectRoleId.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/project/entity/Project.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/project/entity/ProjectSkill.java`
+- _…and 20 more_
+
+---
+
 ### [c0988a4] — 2026-05-16
 
 **refactor(rest): remove user/project controllers and move to /internal**
