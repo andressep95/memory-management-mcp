@@ -33,7 +33,8 @@ public class MemoryRestController {
     public record EntryInput(
             String commitHash, String branch, String author, String filePath,
             String intent, String what, String why, String kind, String language,
-            List<String> tags, List<HunkInput> hunks
+            List<String> tags, String rawDiff, String contentBefore, String contentAfter,
+            List<HunkInput> hunks
     ) {}
 
     public record BatchRequest(String apiKey, List<EntryInput> entries) {}
@@ -48,6 +49,7 @@ public class MemoryRestController {
                     .map(e -> new BatchIndexMemoryHandler.EntryCommand(
                             e.commitHash(), e.branch(), e.author(), e.filePath(),
                             e.intent(), e.what(), e.why(), e.kind(), e.language(), e.tags(),
+                            e.rawDiff(), e.contentBefore(), e.contentAfter(),
                             e.hunks() == null ? List.of()
                                     : e.hunks().stream()
                                     .map(h -> new BatchIndexMemoryHandler.HunkInput(

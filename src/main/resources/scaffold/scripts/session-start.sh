@@ -91,8 +91,7 @@ PYEOF
   if [ "$INITIALIZED" = "false" ] || [ -z "$LAST_HASH" ]; then
     # Full bootstrap — never indexed or hash is missing
     (cd "$ROOT" && \
-      python3 "$SCRIPTS/extract_changes.py" --all --api-key "$API_KEY" --mcp-url "$SERVER_URL" >> "$MEMORY_LOG" 2>&1 && \
-      python3 "$SCRIPTS/sync-skills-to-chroma.py" >> "$MEMORY_LOG" 2>&1 \
+      python3 "$SCRIPTS/extract_changes.py" --all --api-key "$API_KEY" --mcp-url "$SERVER_URL" >> "$MEMORY_LOG" 2>&1 \
     ) &
     disown $! 2>/dev/null || true
     _save_mem_state

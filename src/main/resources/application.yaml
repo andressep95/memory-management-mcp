@@ -18,6 +18,9 @@ spring:
     database-platform: org.hibernate.dialect.OracleDialect
     show-sql: false
 
+  codec:
+    max-in-memory-size: 10MB
+
   ai:
     mcp:
       server:

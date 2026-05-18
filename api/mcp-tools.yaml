@@ -19,16 +19,70 @@ tools:
     status: active
     callers: [agent]
     description: >
-      Search the project's indexed git history by semantic similarity.
-      Returns commits and file changes matching the intent of the query.
+      Search the project's full indexed git history by semantic similarity.
+      Returns commits across all file types: code, documentation, and config.
       Use this to find prior implementations, recent changes, or the reasoning
       behind past decisions (why a change was made).
+      Prefer queryCode or queryDocs when you know what kind of context you need.
     input:
       required: [prompt, projectId, limit]
       properties:
         prompt:
           type: string
           description: Natural language description of what you are looking for
+        projectId:
+          type: string
+          format: uuid
+          description: Project UUID (from POST /api/projects)
+        limit:
+          type: integer
+          description: Max results to return (1–10 recommended)
+    output:
+      type: array
+      items:
+        $ref: "#/schemas/MemoryMatchResult"
+
+  - name: queryCode
+    group: memory
+    status: active
+    callers: [agent]
+    description: >
+      Search only source code changes in the indexed git history.
+      Covers: .java, .py, .ts, .go, .rs, .sql, .sh, and all other source/test/script files.
+      Use this when you need implementation context: how something was built or what changed in code.
+    input:
+      required: [prompt, projectId, limit]
+      properties:
+        prompt:
+          type: string
+          description: Natural language description of the code you are looking for
+        projectId:
+          type: string
+          format: uuid
+          description: Project UUID (from POST /api/projects)
+        limit:
+          type: integer
+          description: Max results to return (1–10 recommended)
+    output:
+      type: array
+      items:
+        $ref: "#/schemas/MemoryMatchResult"
+
+  - name: queryDocs
+    group: memory
+    status: active
+    callers: [agent]
+    description: >
+      Search only documentation changes in the indexed git history.
+      Covers: .md, .rst, .adoc and API specs (openapi.yaml, swagger).
+      Use this when you need documentation context: design decisions, API contracts, guides.
+      Skills are NOT included here — use querySkills for skill-related searches.
+    input:
+      required: [prompt, projectId, limit]
+      properties:
+        prompt:
+          type: string
+          description: Natural language description of the documentation you are looking for
         projectId:
           type: string
           format: uuid
@@ -130,6 +184,7 @@ schemas:
       intent:     { type: string, description: "feat, fix, refactor, docs, etc." }
       what:       { type: string }
       why:        { type: string, nullable: true }
+      kind:       { type: string, description: "File discriminator: code, doc, or config", nullable: true }
       language:   { type: string }
       tags:       { type: array, items: { type: string } }
       score:      { type: number, format: double }

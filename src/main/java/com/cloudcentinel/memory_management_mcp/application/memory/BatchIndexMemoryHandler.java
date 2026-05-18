@@ -40,13 +40,16 @@ public class BatchIndexMemoryHandler {
             String kind,
             String language,
             List<String> tags,
+            String rawDiff,
+            String contentBefore,
+            String contentAfter,
             List<HunkInput> hunks
     ) {
         public EntryCommand(String commitHash, String branch, String author, String filePath,
                             String intent, String what, String why, String language,
                             List<String> tags, List<HunkInput> hunks) {
             this(commitHash, branch, author, filePath, intent, what, why,
-                 null, language, tags, hunks);
+                 null, language, tags, null, null, null, hunks);
         }
     }
 
@@ -96,7 +99,7 @@ public class BatchIndexMemoryHandler {
                     kind,
                     entry.language(),
                     entry.tags(),
-                    null, null, null
+                    entry.rawDiff(), entry.contentBefore(), entry.contentAfter()
             );
             change.assignEmbedding(vectors.get(i));
 
