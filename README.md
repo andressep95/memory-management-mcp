@@ -23,6 +23,31 @@ Clean Architecture + DDD with 7 bounded contexts:
 | Session | Agent work sessions and skill usage audit |
 | Access | Roles, private skills, user preferences |
 
+## MCP Tools
+
+Tools exposed via MCP (stdio / http-sse) for agent consumption:
+
+| Tool | Group | Description |
+|------|-------|-------------|
+| `queryMemory` | memory | Semantic search across all indexed git history (code + docs + config) |
+| `queryCode` | memory | Semantic search scoped to source code changes only |
+| `queryDocs` | memory | Semantic search scoped to documentation changes only |
+| `getIndexedCommits` | memory | Returns commit hashes already indexed for a project |
+| `querySkills` | skills | Semantic search over skill chunks enabled for a project |
+| `setupProject` | setup | Initialize agent environment — returns a blueprint to apply |
+
+All MCP tools require a `projectId` (UUID) obtained from project creation.
+
+## REST Endpoints
+
+Internal HTTP endpoints for data ingestion and project management:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/projects` | Create a new project (returns `projectId` + `apiKey`) |
+| `POST` | `/internal/memory/batch` | Batch-index commit diffs (called by `session-start.sh`) |
+| `GET` | `/internal/memory/commits?apiKey=` | Get set of already-indexed commit hashes |
+
 ## Prerequisites
 
 - Java 17+
@@ -38,6 +63,16 @@ docker compose up -d
 ./mvnw spring-boot:run
 ```
 
+## Agent Setup
+
+After the server is running, agents call `setupProject` with an API key to scaffold:
+- `.agents/config.json` — project credentials
+- `.agents/rules.md` — MCP protocol rules
+- `.agents/skills/commit/SKILL.md` — commit format skill
+- `.agents/scripts/` — session-start, post-commit, prompt-guard, etc.
+- `.kiro/hooks/` — pre-tool-use and session hooks
+- Symlinks: `CLAUDE.md`, `AGENTS.md`, `.kiro/steering/`
+
 ## Project Structure
 
 ```
@@ -50,7 +85,13 @@ src/main/java/com/cloudcentinel/memory_management_mcp/
 │   ├── knowledge/   # Document entity, DocumentSection, semantic doc search
 │   ├── session/     # Session entity, SkillUsageRecord
 │   └── access/      # UserProjectRole, UserPreference, UserPrivateSkill
-docker/oracle/init/  # DDL schema for Oracle 23ai
+├── application/     # Use-case handlers (CQRS commands/queries)
+├── infrastructure/
+│   ├── mcp/         # MCP tool definitions (SetupMcpTools, MemoryMcpTools, SkillMcpTools)
+│   ├── rest/        # REST controllers (ProjectRestController, MemoryRestController)
+│   └── persistence/ # JPA adapters for Oracle 23ai
+docker/oracle/init/  # DDL schema (00-grants.sql, 01-schema.sql)
+src/main/resources/scaffold/  # Files deployed by setupProject
 ```
 
 ## License
