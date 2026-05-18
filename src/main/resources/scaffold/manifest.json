@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "extract": [
+    { "from": "rules.md",                          "to": ".agents/rules.md" },
+    { "from": "scripts/",                          "to": ".agents/scripts/" },
+    { "from": ".claude/settings.json",             "to": ".claude/settings.json" },
+    { "from": ".kiro/hooks/session-start.yaml",    "to": ".kiro/hooks/session-start.yaml" },
+    { "from": ".kiro/hooks/validate-commit.yaml",  "to": ".kiro/hooks/validate-commit.yaml" },
+    { "from": ".kiro/hooks/post-commit-clear.yaml","to": ".kiro/hooks/post-commit-clear.yaml" }
+  ],
+  "mkdirs": [
+    ".agents"
+  ],
+  "symlinks": [
+    { "link": "CLAUDE.md",                       "target": ".agents/rules.md" },
+    { "link": "AGENTS.md",                       "target": ".agents/rules.md" },
+    { "link": ".kiro/steering/project-rules.md", "target": "../../.agents/rules.md" }
+  ],
+  "copy_and_exec": [
+    { "from": "scripts/post-commit", "to": ".git/hooks/post-commit" }
+  ],
+  "gitignore_append": ".agents/config.json\n"
+}

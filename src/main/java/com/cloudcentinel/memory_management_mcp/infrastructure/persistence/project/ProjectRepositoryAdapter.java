@@ -22,6 +22,11 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
     }
 
     @Override
+    public void update(Project project) {
+        jpaRepo.save(ProjectJpaEntity.from(project));
+    }
+
+    @Override
     public Optional<Project> findById(UUID id) {
         return jpaRepo.findById(id).map(ProjectJpaEntity::toDomain);
     }

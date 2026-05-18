@@ -26,19 +26,28 @@ public class ProjectJpaEntity {
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 
+    @Column(name = "setup_completed_at")
+    private OffsetDateTime setupCompletedAt;
+
     protected ProjectJpaEntity() {}
 
     public static ProjectJpaEntity from(Project project) {
         ProjectJpaEntity e = new ProjectJpaEntity();
-        e.id        = project.id();
-        e.apiKey    = project.apiKey();
-        e.name      = project.name();
-        e.createdAt = project.createdAt().atOffset(ZoneOffset.UTC);
+        e.id               = project.id();
+        e.apiKey           = project.apiKey();
+        e.name             = project.name();
+        e.createdAt        = project.createdAt().atOffset(ZoneOffset.UTC);
+        e.setupCompletedAt = project.setupCompletedAt() != null
+                ? project.setupCompletedAt().atOffset(ZoneOffset.UTC)
+                : null;
         return e;
     }
 
     public Project toDomain() {
-        return Project.reconstitute(id, name, apiKey, createdAt.toInstant());
+        return Project.reconstitute(
+                id, name, apiKey,
+                createdAt.toInstant(),
+                setupCompletedAt != null ? setupCompletedAt.toInstant() : null);
     }
 
     public UUID   getId()    { return id; }

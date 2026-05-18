@@ -9,6 +9,8 @@ public interface ProjectRepository {
 
     void save(Project project);
 
+    void update(Project project);
+
     Optional<Project> findById(UUID id);
 
     Optional<Project> findByApiKey(String apiKey);

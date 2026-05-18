@@ -12,10 +12,11 @@
 -- Identified by api_key in all subsequent requests.
 -- ============================================================
 CREATE TABLE projects (
-    id          RAW(16)                      DEFAULT SYS_GUID() NOT NULL,
-    api_key     VARCHAR2(64)                 NOT NULL,
-    name        VARCHAR2(255)                NOT NULL,
-    created_at  TIMESTAMP WITH TIME ZONE     DEFAULT SYSTIMESTAMP NOT NULL,
+    id                   RAW(16)                      DEFAULT SYS_GUID() NOT NULL,
+    api_key              VARCHAR2(64)                 NOT NULL,
+    name                 VARCHAR2(255)                NOT NULL,
+    created_at           TIMESTAMP WITH TIME ZONE     DEFAULT SYSTIMESTAMP NOT NULL,
+    setup_completed_at   TIMESTAMP WITH TIME ZONE,
     CONSTRAINT pk_projects         PRIMARY KEY (id),
     CONSTRAINT uk_projects_api_key UNIQUE (api_key),
     CONSTRAINT uk_projects_name    UNIQUE (name)
@@ -280,8 +281,9 @@ CREATE INDEX idx_doc_sections_document ON document_sections (document_id, positi
 -- ============================================================
 
 COMMENT ON TABLE  projects           IS 'Projects registered via REST (POST /api/projects). Identified by api_key in all requests.';
-COMMENT ON COLUMN projects.api_key   IS 'Secret key used to route all batch indexing and MCP calls to this project.';
-COMMENT ON COLUMN projects.name      IS 'Human-readable project name, typically the git repository folder name.';
+COMMENT ON COLUMN projects.api_key              IS 'Secret key used to route all batch indexing and MCP calls to this project.';
+COMMENT ON COLUMN projects.name                 IS 'Human-readable project name, typically the git repository folder name.';
+COMMENT ON COLUMN projects.setup_completed_at   IS 'Timestamp of the last successful setupProject MCP tool call. NULL means setup has not been run yet.';
 
 COMMENT ON TABLE  users              IS 'Developers auto-created on first git activity. Identity from git config (user.name / user.email). No explicit registration.';
 COMMENT ON COLUMN users.git_username IS 'Primary key. Git author name — used as identity across sessions and commits.';
