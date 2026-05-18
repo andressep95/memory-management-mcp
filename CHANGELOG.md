@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [1402460] — 2026-05-17
+
+**feat(memory): add kind discrimination for queryCode and queryDocs tools**
+
+> what: Adds 'kind' field (code/doc/config) to memory_changes across all
+> layers — schema, domain, persistence, handlers, MCP tools, and
+> extract scripts — enabling queryCode and queryDocs to filter
+> results by file type; KindClassifier derives kind from file path
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/KindClassifier.java`
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/BatchIndexMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/IndexMemoryChangeHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/QueryMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/entity/MemoryChange.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/MemoryChangeRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/MemoryMcpTools.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeJpaEntity.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeRepositoryAdapter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/MemoryRestController.java`
+- `src/main/resources/scaffold/scripts/extract_changes.py`
+
+---
+
 ### [5a1eb7c] — 2026-05-17
 
 **fix(setup): include memory.state.json in setupProject blueprint**
