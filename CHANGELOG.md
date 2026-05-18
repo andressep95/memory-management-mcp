@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [d281b03] — 2026-05-17
+
+**feat(memory): auto-bootstrap Chroma on session start via state file**
+
+> what: session-start.sh checks .agents/memory.state.json and launches
+> extract_changes.py in background if memory is uninitialized or
+> new commits exist since last indexed hash
+> why: removes the manual batchIndexMemory step after setup — agents
+
+#### Changed
+
+- `.agents/scripts/session-start.sh`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SetupMcpTools.java`
+- `src/main/resources/scaffold/scripts/session-start.sh`
+
+---
+
 ### [3fa2321] — 2026-05-17
 
 **feat(mcp): add mcp-tools.yaml spec and mcp-tools-doc skill**
