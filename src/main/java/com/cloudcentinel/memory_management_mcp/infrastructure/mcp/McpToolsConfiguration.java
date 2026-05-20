@@ -12,10 +12,11 @@ public class McpToolsConfiguration {
     public ToolCallbackProvider mcpToolCallbackProvider(
             SkillMcpTools skillTools,
             MemoryMcpTools memoryTools,
-            SetupMcpTools setupTools) {
+            SetupMcpTools setupTools,
+            SetupValidationMcpTools setupValidationTools) {
 
         return MethodToolCallbackProvider.builder()
-                .toolObjects(skillTools, memoryTools, setupTools)
+                .toolObjects(skillTools, memoryTools, setupTools, setupValidationTools)
                 .build();
     }
 }
