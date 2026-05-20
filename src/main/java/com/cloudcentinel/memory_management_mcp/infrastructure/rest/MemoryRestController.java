@@ -38,7 +38,7 @@ public class MemoryRestController {
     ) {}
 
     public record BatchRequest(String apiKey, List<EntryInput> entries) {}
-    public record BatchResponse(int inserted, int skipped) {}
+    public record BatchResponse(int inserted, int skipped, int enrichmentQueued) {}
 
     @PostMapping("/batch")
     public Mono<BatchResponse> batchIndex(@RequestBody BatchRequest req) {
@@ -62,7 +62,7 @@ public class MemoryRestController {
             BatchIndexMemoryHandler.Result result = batchHandler.handle(
                     new BatchIndexMemoryHandler.Command(projectId, commands));
 
-            return new BatchResponse(result.inserted(), result.skipped());
+            return new BatchResponse(result.inserted(), result.skipped(), result.enrichmentQueued());
         }).subscribeOn(Schedulers.boundedElastic());
     }
 

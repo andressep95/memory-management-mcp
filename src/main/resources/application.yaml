@@ -32,3 +32,13 @@ management:
     web:
       exposure:
         include: health
+
+# ── Enrichment Pipeline (LLM-based commit field inference) ──
+enrichment:
+  enabled: true
+  llm:
+    provider: openai
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: gpt-4o-mini
+      base-url: https://api.openai.com/v1

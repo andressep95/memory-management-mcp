@@ -59,6 +59,10 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
     private static final String UPDATE_EMBEDDING_SQL =
             "UPDATE memory_changes SET embedding = ? WHERE id = ?";
 
+    private static final String UPDATE_ENRICHMENT_SQL = """
+            UPDATE memory_changes SET intent = ?, what = ?, why = ?, embedding = ? WHERE id = ?
+            """;
+
     private final MemoryChangeSpringDataRepository jpaRepo;
     private final JdbcTemplate jdbcTemplate;
     private final UuidRawConverter uuidConverter = new UuidRawConverter();
@@ -173,6 +177,35 @@ public class MemoryChangeRepositoryAdapter implements MemoryChangeRepository {
                 },
                 (rs, rowNum) -> mapRow(rs)
         );
+    }
+
+    @Override
+    public void updateEnrichment(MemoryChangeId id, ChangeIntent intent, String what, String why, EmbeddingVector embedding) {
+        byte[] idBytes = uuidConverter.convertToDatabaseColumn(id.value());
+        jdbcTemplate.update(UPDATE_ENRICHMENT_SQL, ps -> {
+            ps.setString(1, intent != null ? intent.name() : null);
+            ps.setString(2, what);
+            ps.setString(3, why);
+            ps.setObject(4, embedding != null ? toOracleVector(embedding.values()) : null);
+            ps.setBytes(5, idBytes);
+        });
+    }
+
+    @Override
+    public Optional<EnrichmentData> findForEnrichment(MemoryChangeId id) {
+        byte[] idBytes = uuidConverter.convertToDatabaseColumn(id.value());
+        List<EnrichmentData> results = jdbcTemplate.query(
+                "SELECT id, commit_hash, what, file_path, raw_diff FROM memory_changes WHERE id = ?",
+                ps -> ps.setBytes(1, idBytes),
+                (rs, rowNum) -> new EnrichmentData(
+                        new MemoryChangeId(toUuid(rs.getBytes("id"))),
+                        rs.getString("commit_hash"),
+                        rs.getString("what"),
+                        rs.getString("file_path"),
+                        rs.getString("raw_diff")
+                )
+        );
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
     private ScoredMemoryChange mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {

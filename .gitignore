@@ -35,3 +35,7 @@ build/
 
 ## agents-memory
 .agents/memory.agents/config.json
+
+# Local secrets (never commit)
+src/main/resources/application-local.yaml
+.agents/config.json

@@ -1,6 +1,7 @@
 package com.cloudcentinel.memory_management_mcp.domain.memory.repository;
 
 import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChange;
+import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.MemoryChangeId;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
@@ -26,4 +27,10 @@ public interface MemoryChangeRepository {
     List<ScoredMemoryChange> findSimilar(EmbeddingVector query, String projectId, int limit);
 
     List<ScoredMemoryChange> findSimilar(EmbeddingVector query, String projectId, int limit, String kind);
+
+    void updateEnrichment(MemoryChangeId id, ChangeIntent intent, String what, String why, EmbeddingVector embedding);
+
+    record EnrichmentData(MemoryChangeId id, String commitHash, String what, String filePath, String rawDiff) {}
+
+    Optional<EnrichmentData> findForEnrichment(MemoryChangeId id);
 }

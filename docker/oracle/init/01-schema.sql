@@ -186,6 +186,30 @@ CREATE TABLE MCP_USER.documents (
 
 
 -- ============================================================
+-- ENRICHMENT_QUEUE
+-- ============================================================
+CREATE TABLE MCP_USER.enrichment_queue (
+    id                RAW(16)                  DEFAULT SYS_GUID() NOT NULL,
+    memory_change_id  RAW(16)                  NOT NULL,
+    status            VARCHAR2(20)             DEFAULT 'PENDING' NOT NULL,
+    attempts          NUMBER(3)                DEFAULT 0 NOT NULL,
+    last_error        VARCHAR2(1000)          ,
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    processed_at      TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_enrichment_queue      PRIMARY KEY (id),
+    CONSTRAINT fk_enrichment_queue_mc   FOREIGN KEY (memory_change_id) REFERENCES MCP_USER.memory_changes (id) ON DELETE CASCADE,
+    CONSTRAINT uk_enrichment_queue_mc   UNIQUE (memory_change_id),
+    CONSTRAINT ck_enrichment_status     CHECK (status IN ('PENDING', 'PROCESSING', 'DONE', 'FAILED'))
+);
+
+CREATE INDEX MCP_USER.idx_enrichment_queue_status ON MCP_USER.enrichment_queue (status, created_at);
+
+COMMENT ON TABLE  MCP_USER.enrichment_queue              IS 'Persistent queue for commits needing LLM enrichment of intent/what/why fields.';
+COMMENT ON COLUMN MCP_USER.enrichment_queue.status       IS 'PENDING → PROCESSING → DONE|FAILED. Uses SELECT FOR UPDATE SKIP LOCKED for concurrency.';
+COMMENT ON COLUMN MCP_USER.enrichment_queue.attempts     IS 'Retry counter. Tasks with attempts >= 3 are marked FAILED.';
+
+
+-- ============================================================
 -- DOCUMENT_SECTIONS
 -- ============================================================
 CREATE TABLE MCP_USER.document_sections (

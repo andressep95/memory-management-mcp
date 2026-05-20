@@ -1,12 +1,15 @@
 package com.cloudcentinel.memory_management_mcp.application.memory;
 
+import com.cloudcentinel.memory_management_mcp.domain.memory.entity.EnrichmentTask;
 import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChange;
 import com.cloudcentinel.memory_management_mcp.domain.memory.entity.MemoryChangeHunk;
+import com.cloudcentinel.memory_management_mcp.domain.memory.repository.EnrichmentTaskRepository;
 import com.cloudcentinel.memory_management_mcp.domain.memory.repository.MemoryChangeRepository;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.ChangeIntent;
 import com.cloudcentinel.memory_management_mcp.domain.memory.valueobject.CommitHash;
 import com.cloudcentinel.memory_management_mcp.domain.skill.valueobject.EmbeddingVector;
 import com.cloudcentinel.memory_management_mcp.infrastructure.embedding.EmbeddingService;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,11 +23,18 @@ public class BatchIndexMemoryHandler {
     private static final int CHUNK_SIZE = 50;
 
     private final MemoryChangeRepository repository;
+    private final EnrichmentTaskRepository enrichmentRepository;
     private final EmbeddingService embeddingService;
+    private final EnrichmentProcessor enrichmentProcessor;
 
-    public BatchIndexMemoryHandler(MemoryChangeRepository repository, EmbeddingService embeddingService) {
-        this.repository       = repository;
-        this.embeddingService = embeddingService;
+    public BatchIndexMemoryHandler(MemoryChangeRepository repository,
+                                   EnrichmentTaskRepository enrichmentRepository,
+                                   EmbeddingService embeddingService,
+                                   @Nullable EnrichmentProcessor enrichmentProcessor) {
+        this.repository           = repository;
+        this.enrichmentRepository = enrichmentRepository;
+        this.embeddingService     = embeddingService;
+        this.enrichmentProcessor  = enrichmentProcessor;
     }
 
     public record HunkInput(int linesStart, int linesEnd, String symbol, String changeType, String hunkDiff) {}
@@ -55,7 +65,7 @@ public class BatchIndexMemoryHandler {
 
     public record Command(String projectId, List<EntryCommand> entries) {}
 
-    public record Result(int inserted, int skipped) {}
+    public record Result(int inserted, int skipped, int enrichmentQueued) {}
 
     @Transactional
     public Result handle(Command command) {
@@ -66,15 +76,22 @@ public class BatchIndexMemoryHandler {
                 .toList();
 
         int inserted = 0;
+        List<MemoryChange> allInserted = new ArrayList<>();
         for (int i = 0; i < pending.size(); i += CHUNK_SIZE) {
             List<EntryCommand> chunk = pending.subList(i, Math.min(i + CHUNK_SIZE, pending.size()));
-            inserted += processChunk(command.projectId(), chunk);
+            List<MemoryChange> chunkResults = processChunk(command.projectId(), chunk);
+            allInserted.addAll(chunkResults);
+            inserted += chunkResults.size();
         }
 
-        return new Result(inserted, command.entries().size() - inserted);
+        int queued = enqueuePoorEntries(allInserted, pending);
+        if (queued > 0 && enrichmentProcessor != null) {
+            enrichmentProcessor.trigger();
+        }
+        return new Result(inserted, command.entries().size() - inserted, queued);
     }
 
-    private int processChunk(String projectId, List<EntryCommand> chunk) {
+    private List<MemoryChange> processChunk(String projectId, List<EntryCommand> chunk) {
         List<String> embedTexts = chunk.stream()
                 .map(e -> buildEmbedText(e.intent(), e.what(), e.why(), e.filePath()))
                 .toList();
@@ -113,7 +130,30 @@ public class BatchIndexMemoryHandler {
         }
 
         repository.saveAll(changes);
-        return changes.size();
+        return changes;
+    }
+
+    private int enqueuePoorEntries(List<MemoryChange> changes, List<EntryCommand> entries) {
+        List<EnrichmentTask> tasks = new ArrayList<>();
+        for (int i = 0; i < changes.size(); i++) {
+            EntryCommand entry = entries.get(i);
+            if (needsEnrichment(entry)) {
+                tasks.add(EnrichmentTask.create(changes.get(i).id()));
+            }
+        }
+        if (!tasks.isEmpty()) {
+            enrichmentRepository.saveAll(tasks);
+        }
+        return tasks.size();
+    }
+
+    private boolean needsEnrichment(EntryCommand entry) {
+        boolean noIntent = entry.intent() == null || entry.intent().isBlank();
+        boolean noWhy = entry.why() == null || entry.why().isBlank();
+        boolean whatIsSubject = entry.what() != null && entry.what().contains(":")
+                && entry.what().length() > 50;
+        // If there's no conventional intent OR no why, it's a legacy commit
+        return noIntent || noWhy || whatIsSubject;
     }
 
     private String buildEmbedText(String intent, String what, String why, String filePath) {
