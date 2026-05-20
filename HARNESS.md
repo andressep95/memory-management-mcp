@@ -1,7 +1,23 @@
-# Memory Management MCP — Mejoras Priorizadas
+# Memory Management MCP — Harness Engineering Bible
 
-> Documento de referencia para evolucionar el sistema de memoria semántica basado en commits.
-> Cada mejora se contrasta con el estado actual de la implementación.
+> Documento de referencia para evolucionar el sistema de memoria semántica.
+> Organizado por área funcional. Cada mejora tiene prioridad, estado y contexto de implementación.
+>
+> **Ecuación fundamental:** `Agente = Modelo + Harness`
+> El MCP server ES el harness — impone estructura determinista sobre la inteligencia probabilística del modelo.
+
+---
+
+## Principios de Diseño
+
+| Principio | Aplicación en este sistema |
+|-----------|---------------------------|
+| **Progreso incremental** | 1 commit = 1 feature. Estado limpio al final de cada sesión |
+| **Memoria persistente** | Oracle 23ai como Engram — decisiones y contexto sobreviven entre sesiones |
+| **Verificación autónoma** | El agente valida su trabajo via `queryMemory` antes de implementar |
+| **Progressive Context Disclosure** | Solo inyectar skills/memory relevantes, no todo el catálogo |
+| **Eliminación categórica** | Si un error se repite, se arregla el harness (skill/linter/hook), no el código |
+| **Código predecible** | Skills estandarizan formato, hooks imponen calidad |
 
 ---
 
@@ -10,149 +26,151 @@
 | Aspecto | Implementado Hoy | Visión Objetivo |
 |---------|-------------------|-----------------|
 | Búsqueda | Vectorial pura (COSINE) | Híbrida (vector + filtros relacionales) |
-| Ingesta | 1 registro por archivo por commit, embedding de `intent+what+why+filePath` | Chunking inteligente por tipo de archivo |
+| Ingesta | 1 registro por archivo por commit | Chunking inteligente + metadata trimming |
 | Pruning | Ninguno — crece infinitamente | Consolidación temporal (corto/largo plazo) |
-| Contexto Git | Solo `branch` y `author` almacenados | Lineage de commits, divergencia de ramas |
-| Filtros | Solo por `kind` (code/doc/config) | Fecha, autor, rama, extensión, tags |
-| Metadatos IaC | No diferenciado | Impacto arquitectónico automático |
+| Contexto Git | Solo `branch` y `author` | Lineage, divergencia, impacto arquitectónico |
+| Setup | Blueprint sin validación | 3 capas: blueprint → confirmSetup → hook runtime gate |
+| Disciplina | Skills manuales | Linters bespoke + invariantes arquitectónicos |
+| Verificación | Ninguna | Agente de verificación + TDD estricto |
 
 ---
 
-## Tabla de Mejoras Priorizadas
-
-| # | Mejora | Impacto | Esfuerzo | Categoría | Estado |
-|---|--------|---------|----------|-----------|--------|
-| 0 | **Enriquecimiento de Commits Legacy** — Cola persistente + LLM para inferir intent/what/why en commits pre-estándar | 🔴 Bloqueante | Medio | Ingesta | 🚧 En progreso |
-| 1 | **Búsqueda Híbrida** — Combinar VECTOR_DISTANCE con filtros WHERE (fecha, autor, rama, extensión) | 🔴 Crítico | Medio | Búsqueda | ❌ No existe |
-| 2 | **Memory Pruning & Consolidación** — Regla de squash + memoria corto/largo plazo | 🔴 Crítico | Alto | Mantenimiento | ❌ No existe |
-| 3 | **Commit Lineage** — Dado un commit, recuperar N anteriores/posteriores para contexto de flujo | 🟠 Alto | Bajo | Búsqueda | ❌ No existe |
-| 4 | **Chunking Inteligente por Tipo** — IaC por bloques lógicos, deps con flag especial | 🟠 Alto | Alto | Ingesta | ❌ No existe |
-| 5 | **Metadata Trimming** — Sanitizar diffs antes de Oracle (ignorar binarios, `go.sum`, archivos generados) | 🟠 Alto | Bajo | Ingesta | ⚠️ Parcial (MAX_HUNK_CONTENT=12K) |
-| 6 | **Active Branch Context** — Tool que informa rama actual, upstream, commits divergentes | 🟡 Medio | Bajo | Tools | ❌ No existe |
-| 7 | **Impacto Arquitectónico** — Detectar cambios en IaC/deps y generar metadatos enriquecidos | 🟡 Medio | Medio | Ingesta | ❌ No existe |
-| 8 | **Grafos de Dependencia** — Vincular commits que tocan archivos relacionados (repo ↔ infra) | 🟡 Medio | Alto | Búsqueda | ❌ No existe |
-| 9 | **Alineación de Embeddings** — Validar que el modelo de ingesta y búsqueda sean idénticos | 🟢 Bajo | Bajo | Infra | ✅ Mismo modelo (multilingual-e5-small) |
+## Mejoras por Categoría
 
 ---
 
-## Detalle de Mejoras
+### 🔧 SETUP INICIAL
 
-### 0. Enriquecimiento de Commits Legacy (Prioridad Bloqueante)
+Mejoras al proceso de `setupProject` y configuración del entorno del agente.
 
-**Problema:** Commits anteriores al skill de formato no tienen `what:`, `why:` ni `intent` estructurado. El fallback actual (`what = subject del commit`) produce embeddings genéricos que contaminan la búsqueda semántica. Sin esto, indexar historial antiguo es inútil.
+| # | Mejora | Impacto | Esfuerzo | Estado |
+|---|--------|---------|----------|--------|
+| S1 | **3-Layer Validated Setup** — `setupProject` (blueprint) → `confirmSetup` (server valida) → hook runtime (gate) | 🔴 Crítico | Medio | 🔧 Diseñado |
+| S2 | **Auto-repair Loop** — Hook runtime detecta drift, inyecta fixes, agente repara | 🟠 Alto | Bajo | 🔧 Diseñado |
+| S3 | **Linters Bespoke** — Invariantes arquitectónicos verificados por código (no por deseos) | 🟡 Medio | Medio | ❌ |
 
-**Detección de campos pobres:**
+#### S1. 3-Layer Validated Setup
+
+**Problema:** `setupProject` retornaba un blueprint y marcaba `setup_completed_at` inmediatamente. Si el agente se interrumpía, el server creía que todo estaba listo. Ejemplo real: el `post-commit` hook no se copió y los commits no se indexaban.
+
+**Problema recursivo:** Si el agente falla en aplicar el blueprint, ¿por qué confiar en que ejecutará un script de validación? La validación no puede depender del agente.
+
+**Solución — 3 capas independientes:**
+
+| Capa | Quién ejecuta | Qué valida | Si falla |
+|------|---------------|------------|----------|
+| `setupProject` | Server | Genera blueprint, NO marca completed | Agente puede re-llamar |
+| `confirmSetup` | Agente → Server | Hash config + checklist | Server rechaza |
+| Hook `agentSpawn` | **Runtime** (fuera del control del agente) | Filesystem local | Inyecta fixes al contexto |
+
+**Cambios clave:**
+- `setupProject` ya NO marca `setup_completed_at` — es idempotente
+- Nuevo tool `confirmSetup(apiKey, checksReport)` — valida hash + marca completed
+- Nuevo script `validate-setup.sh` — ejecutado por el runtime en cada sesión
+- `applySteps` tipado reemplaza `nextSteps` en prosa
+- `scaffoldVersion` + `configHash` para detectar drift
+
+**Precondiciones:** Todos los MCP tools (`queryMemory`, `querySkills`, etc.) rechazan llamadas si `setup_completed_at` es null.
+
+**Documentación completa:** `docs/tools/setup-project.md`
+
+#### S2. Auto-repair Loop
+
+**Problema:** Archivos se borran, permisos se pierden, symlinks se rompen después del setup inicial.
+
+**Solución:** El hook `agentSpawn` ejecuta `validate-setup.sh` en cada inicio de sesión. Si detecta problemas:
+
+1. Script retorna exit 1 + lista de fixes en stdout
+2. Runtime inyecta el output como contexto obligatorio al agente
+3. Agente ejecuta los fixes
+4. Próxima sesión: hook pasa ✅
+
+```bash
+# validate-setup.sh output cuando falla:
+⚠️ SETUP INCOMPLETE — apply these fixes before continuing:
+- MISSING: .git/hooks/post-commit → fix: cp .agents/scripts/post-commit .git/hooks/post-commit && chmod +x .git/hooks/post-commit
+- MISSING SYMLINK: CLAUDE.md → fix: ln -sf .agents/rules.md CLAUDE.md
+```
+
+**Por qué funciona:** El runtime ejecuta el hook, no el agente. El agente no puede ignorarlo ni saltárselo. Es la misma mecánica que usa Kiro con hooks `preToolUse` que bloquean tools (exit code 2).
+
+#### S3. Linters Bespoke
+
+**Concepto:** Imponer calidad mediante código. Si el agente viola la arquitectura, el linter dispara un error que actúa como prompt de corrección inmediata.
+
+**Ejemplos:**
+- Prohibir archivos > 350 líneas (fuerza modularización)
+- Verificar que todo handler tenga su test
+- Detectar prop-drilling o dependencias circulares
+- Validar que commits sigan el formato del skill
+
+---
+
+### 📥 INGESTA DE COMMITS
+
+Mejoras al pipeline de extracción, transformación y carga de commits en la memoria.
+
+| # | Mejora | Impacto | Esfuerzo | Estado |
+|---|--------|---------|----------|--------|
+| I0 | **Enriquecimiento de Commits Legacy** — LLM infiere intent/what/why | 🔴 Bloqueante | Medio | ✅ Implementado |
+| I1 | **Metadata Trimming** — Excluir binarios, lockfiles, archivos generados | 🟠 Alto | Bajo | ⚠️ Parcial |
+| I2 | **Chunking Inteligente por Tipo** — IaC por bloques, deps con flag, código por función | 🟠 Alto | Alto | ❌ |
+| I3 | **Impacto Arquitectónico** — Tags automáticos para IaC/deps/security changes | 🟡 Medio | Medio | ❌ |
+| I4 | **Compactación Head/Tail** — Diffs largos: conservar inicio+final, persistir resto | 🟡 Medio | Bajo | ❌ |
+
+#### I0. Enriquecimiento de Commits Legacy ✅
+
+**Implementado.** Cola persistente `enrichment_queue` + OpenAI gpt-4o-mini. Detecta campos pobres en ingesta, encola, processor async drena y actualiza intent/what/why + re-genera embedding.
+
+#### I1. Metadata Trimming
+
+**Problema:** `go.sum`, `package-lock.json`, binarios generan embeddings inútiles.
+
+**Solución:** Lista de exclusión en `extract_changes.py`:
 ```python
-# Un registro necesita enriquecimiento si:
-needs_enrichment = (
-    intent is None or intent == "" or          # sin tipo convencional
-    why is None or why == "" or                 # sin motivación
-    what == commit_subject                      # what es solo el subject crudo
-)
-```
-
-**Arquitectura: Cola persistente + LLM (OpenAI API)**
-
-```mermaid
-flowchart TD
-    A[POST /internal/memory/batch] --> B[BatchIndexMemoryHandler]
-    B --> C{Campos pobres?}
-    C -->|No| D[INSERT normal + embedding]
-    C -->|Sí| D
-    D --> E[INSERT enrichment_queue<br/>status=PENDING]
-    E --> F[Scheduled Job cada 30s]
-    F --> G[SELECT batch de PENDING<br/>LIMIT 5 FOR UPDATE SKIP LOCKED]
-    G --> H[Construir prompt con:<br/>commitMsg + diff + filePath]
-    H --> I[OpenAI API gpt-4o-mini]
-    I --> J[Parse respuesta JSON:<br/>intent, what, why]
-    J --> K[UPDATE memory_changes<br/>SET intent, what, why]
-    K --> L[Re-generar embedding<br/>con nuevos campos]
-    L --> M[UPDATE embedding]
-    M --> N[UPDATE enrichment_queue<br/>status=DONE]
-```
-
-**Prompt del LLM:**
-```
-Eres un analizador de commits de git. Dado el mensaje del commit, el diff y el archivo,
-infiere los campos semánticos estructurados.
-
-Commit message: {commitMsg}
-File: {filePath}
-Diff (truncado a 2000 chars): {diff}
-
-Responde SOLO con JSON válido:
-{
-  "intent": "feat|fix|refactor|perf|docs|test|chore|ci|style|sec",
-  "what": "<una oración: qué hace el código ahora que no hacía antes>",
-  "why": "<una oración: por qué fue necesario este cambio>"
+IGNORE_PATTERNS = {
+    "go.sum", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "Cargo.lock", "*.min.js", "*.min.css", "*.map",
+    "*.pb.go", "*.generated.*", "dist/", "build/", "node_modules/",
 }
 ```
 
-**Schema de la cola:**
-```sql
-CREATE TABLE MCP_USER.enrichment_queue (
-    id                RAW(16) DEFAULT SYS_GUID() NOT NULL,
-    memory_change_id  RAW(16) NOT NULL,
-    status            VARCHAR2(20) DEFAULT 'PENDING' NOT NULL,
-    attempts          NUMBER(3) DEFAULT 0 NOT NULL,
-    last_error        VARCHAR2(1000),
-    created_at        TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
-    processed_at      TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT pk_enrichment_queue PRIMARY KEY (id),
-    CONSTRAINT fk_enrichment_queue_mc
-        FOREIGN KEY (memory_change_id) REFERENCES MCP_USER.memory_changes(id),
-    CONSTRAINT ck_enrichment_status
-        CHECK (status IN ('PENDING', 'PROCESSING', 'DONE', 'FAILED'))
-);
-```
+#### I2. Chunking Inteligente por Tipo
 
-**Diagrama de secuencia:**
+| Tipo de Archivo | Estrategia |
+|-----------------|-----------|
+| IaC (`.tf`, `.cdk.ts`) | 1 chunk por `resource`/`module`/`Construct` |
+| Dependencias (`pom.xml`, `go.mod`) | 1 chunk por cambio de versión, flag `ARCH_CHANGE` |
+| Código fuente | 1 chunk por función/método modificado (hunks + symbol) |
+| Documentación | 1 chunk por sección (heading level 2) |
+| Config (`.yaml`, `.env`) | 1 chunk por bloque lógico (top-level key) |
 
-```mermaid
-sequenceDiagram
-    participant Script as extract_changes.py
-    participant API as REST Controller
-    participant Handler as BatchIndexMemoryHandler
-    participant Queue as enrichment_queue
-    participant Job as EnrichmentProcessor
-    participant LLM as OpenAI API
-    participant DB as Oracle 23ai
+#### I3. Impacto Arquitectónico
 
-    Script->>API: POST /internal/memory/batch
-    API->>Handler: handle(entries)
-    Handler->>Handler: INSERT memory_changes (con what=subject como fallback)
-    Handler->>Handler: Detectar campos pobres
-    Handler->>Queue: INSERT (memory_change_id, PENDING)
-    Handler-->>API: {inserted: N, enrichment_queued: M}
+Enriquecer metadatos automáticamente:
+- Archivos IaC → tag `INFRA_CHANGE` + descripción
+- Dependencias → tag `ARCH_CHANGE` + delta de versiones
+- Seguridad → tag `SEC_CHANGE`
 
-    loop Cada 30 segundos
-        Job->>Queue: SELECT ... WHERE status='PENDING' FETCH 5 FOR UPDATE SKIP LOCKED
-        Queue-->>Job: batch de tasks
-        Job->>DB: SELECT what, why, raw_diff, file_path FROM memory_changes WHERE id IN (...)
-        DB-->>Job: datos del commit
-        Job->>LLM: POST /v1/chat/completions (prompt + contexto)
-        LLM-->>Job: {intent, what, why}
-        Job->>DB: UPDATE memory_changes SET intent=?, what=?, why=?
-        Job->>Job: Re-generar embedding con nuevos campos
-        Job->>DB: UPDATE memory_changes SET embedding=?
-        Job->>Queue: UPDATE status='DONE', processed_at=NOW
-    end
-```
+#### I4. Compactación Head/Tail
 
-**Intercambiabilidad del LLM:**
-- Interface `EnrichmentLlmClient` con método `enrich(commitMsg, diff, filePath) → EnrichmentResult`
-- Implementación inicial: `OpenAiEnrichmentClient` (gpt-4o-mini)
-- Futuro: `OllamaEnrichmentClient`, `ClaudeEnrichmentClient`
+Para diffs > 2000 chars: conservar primeros 500 + últimos 500 tokens en el embedding text, persistir el diff completo en `raw_diff` para acceso bajo demanda.
 
 ---
 
-### 1. Búsqueda Híbrida (Prioridad Crítica)
+### 🔍 BÚSQUEDA Y RECUPERACIÓN
 
-**Problema:** Hoy `queryMemory` solo filtra por `kind`. No se puede buscar "cambios de auth hechos por Juan en la última semana".
+Mejoras a cómo el agente consulta la memoria.
 
-**Solución:** Nuevo tool `hybridSearchCommits` que combine:
-- Similitud vectorial (VECTOR_DISTANCE COSINE)
-- Filtros relacionales: `branch`, `author`, rango de `created_at`, `file_path LIKE`, `tags`
+| # | Mejora | Impacto | Esfuerzo | Estado |
+|---|--------|---------|----------|--------|
+| B1 | **Búsqueda Híbrida** — Vector + filtros relacionales (fecha, autor, rama) | 🔴 Crítico | Medio | ❌ |
+| B2 | **Commit Lineage** — N commits antes/después para contexto de flujo | 🟠 Alto | Bajo | ❌ |
+| B3 | **Active Branch Context** — Rama actual, upstream, divergencia | 🟡 Medio | Bajo | ❌ |
+| B4 | **Grafos de Dependencia** — Vincular commits que tocan archivos relacionados | 🟡 Medio | Alto | ❌ |
+| B5 | **Progressive Context Disclosure** — Solo inyectar skills relevantes a la tarea | 🟡 Medio | Medio | ❌ |
+
+#### B1. Búsqueda Híbrida
 
 **SQL propuesto:**
 ```sql
@@ -168,403 +186,94 @@ ORDER BY score ASC
 FETCH FIRST ? ROWS ONLY
 ```
 
-**Impacto en código:**
-- `MemoryChangeRepository`: nuevo método `findSimilarHybrid(...)`
-- `QueryMemoryHandler`: nuevo `HybridQuery` record
-- `MemoryMcpTools`: nuevo tool `hybridSearchCommits`
+#### B2. Commit Lineage
+
+Tool `getCommitLineage(commitHash, projectId, window)` — retorna N commits antes/después para entender el "flujo mental" de una refactorización.
+
+#### B5. Progressive Context Disclosure
+
+No inyectar todas las skills al inicio. Usar el resultado de `querySkills` para inyectar solo las relevantes a la tarea actual. Reduce context rot.
 
 ---
 
-### 2. Memory Pruning & Consolidación (Prioridad Crítica)
+### 🧹 MANTENIMIENTO Y PRUNING
 
-**Problema:** La tabla `memory_changes` crece sin límite. Refactorizaciones obsoletas contaminan resultados.
+Mejoras para mantener la base de datos limpia y las búsquedas relevantes.
 
-**Estrategia de dos niveles:**
+| # | Mejora | Impacto | Esfuerzo | Estado |
+|---|--------|---------|----------|--------|
+| M1 | **Memory Pruning & Consolidación** — Corto/largo plazo + squash rule | 🔴 Crítico | Alto | ❌ |
+| M2 | **Garbage Collection Days** — Análisis semanal de fallos sistemáticos | 🟡 Medio | Bajo | ❌ |
+| M3 | **Re-indexación** — Migration tool si cambia el modelo de embeddings | 🟢 Bajo | Medio | ❌ |
+
+#### M1. Memory Pruning & Consolidación
 
 | Nivel | Retención | Datos | Embedding |
 |-------|-----------|-------|-----------|
 | Memoria de Trabajo | Últimos 30 días | Diff completo + hunks | Vector de `intent+what+why+filePath` |
 | Memoria a Largo Plazo | > 30 días | Solo mensaje + lista de archivos | Vector de `commitMsg + fileList` |
 
-**Reglas adicionales:**
-- Commits de ramas `feature/*` ya mergeadas → purgar tras 14 días, conservar solo el squash en `main`
-- Scheduled job (Spring `@Scheduled`) que ejecute la consolidación diariamente
+**Reglas:**
+- Commits de ramas `feature/*` ya mergeadas → purgar tras 14 días, conservar solo squash en `main`
+- Job diario que ejecute la consolidación
+
+#### M2. Garbage Collection Days
+
+**Concepto:** Política semanal donde se analizan fallos repetitivos. Si un agente comete un error recurrente, no se arregla el código — se arregla el harness (skill, linter, hook) para que ese error nunca vuelva a ocurrir.
 
 ---
 
-### 3. Commit Lineage (Prioridad Alta)
+### 🛡️ DISCIPLINA Y VERIFICACIÓN
 
-**Problema:** Un resultado de búsqueda aislado no muestra el "flujo mental" de una refactorización.
+Mejoras para garantizar calidad y seguridad en la ejecución del agente.
 
-**Solución:** Nuevo tool `getCommitLineage(commitHash, projectId, window)` que retorne N commits antes y después del hash dado, ordenados por `created_at`.
+| # | Mejora | Impacto | Esfuerzo | Estado |
+|---|--------|---------|----------|--------|
+| D1 | **Strict TDD Pipeline** — Red → Green → Triangulate → Refactor obligatorio | 🟠 Alto | Medio | ❌ |
+| D2 | **Agente de Verificación** — Valida implementación contra spec/design | 🟠 Alto | Alto | ❌ |
+| D3 | **Clasificación Dinámica de Permisos** — Read-only / Workspace / Full-access | 🟡 Medio | Medio | ❌ |
+| D4 | **SDD-IA Phases** — Proposal → Spec → Design → Task → Apply → Verify | 🟡 Medio | Alto | ❌ |
+| D5 | **Skills Indexing Digest** — Resúmenes accionables en vez de docs masivas | 🟡 Medio | Bajo | ❌ |
 
-**SQL:**
-```sql
--- Commits del mismo proyecto ordenados por fecha
-WITH target AS (
-  SELECT created_at FROM memory_changes
-  WHERE project_id = ? AND commit_hash = ?
-  FETCH FIRST 1 ROW ONLY
-)
-SELECT DISTINCT commit_hash, what, why, created_at
-FROM memory_changes, target
-WHERE project_id = ?
-  AND ABS(EXTRACT(EPOCH FROM (created_at - target.created_at))) < 86400 * 3
-ORDER BY created_at
+#### D1. Strict TDD Pipeline
+
+Skill que imponga el ciclo:
+1. **Red** — Test fallido basado en spec
+2. **Green** — Código mínimo para pasar
+3. **Triangulate** — Al menos 2 formas de romper el código (casos borde)
+4. **Refactor** — Limpiar sin romper tests
+
+#### D2. Agente de Verificación
+
+Sub-agente independiente que:
+- Ejecuta tests
+- Inspecciona logs
+- Compara implementación contra artefactos de Spec/Design
+- Detecta "victoria prematura" (el agente dice que terminó pero no)
+
+#### D3. Clasificación Dinámica de Permisos
+
+| Nivel | Alcance | Ejemplos |
+|-------|---------|----------|
+| Read-only | Lectura de estado | `ls`, `grep`, `cat`, `git log` |
+| Workspace-write | Escritura al proyecto | `git commit`, `npm install` |
+| Full-access | Operaciones destructivas | `rm -rf`, `sudo`, `git push --force` |
+
+Full-access requiere **Interactive Approval Gate** (pausa para aprobación humana).
+
+#### D4. SDD-IA Phases
+
+Fases obligatorias que impiden al agente saltar directo al código:
+
+```
+Proposal → Spec → Design → Task → Apply → Verify
 ```
 
----
+Cada fase produce un artefacto. El agente no puede avanzar sin completar la fase anterior.
 
-### 4. Chunking Inteligente por Tipo (Prioridad Alta)
+#### D5. Skills Indexing Digest
 
-**Problema:** Hoy se indexa 1 registro por archivo sin importar su naturaleza. Un `main.tf` de 500 líneas con 10 resources se indexa como un solo bloque.
-
-**Reglas de chunking propuestas:**
-
-| Tipo de Archivo | Estrategia de Chunking |
-|-----------------|----------------------|
-| IaC (`.tf`, `.cdk.ts`) | 1 chunk por `resource`/`module`/`Construct` |
-| Dependencias (`pom.xml`, `go.mod`, `package.json`) | 1 chunk por cambio de versión, flag "ARCH_CHANGE" |
-| Código fuente | 1 chunk por función/método modificado (usar hunks + symbol) |
-| Documentación | 1 chunk por sección (heading level 2) |
-| Config (`.yaml`, `.env`) | 1 chunk por bloque lógico (top-level key) |
-
-**Impacto:** Modificar `extract_changes.py` para aplicar splitting antes de enviar al batch API.
-
----
-
-### 5. Metadata Trimming (Prioridad Alta)
-
-**Problema:** Archivos generados (`go.sum`, `package-lock.json`, binarios) generan embeddings inútiles.
-
-**Solución:** Lista de exclusión tipo `.gitignore` interno en `extract_changes.py`:
-
-```python
-IGNORE_PATTERNS = {
-    "go.sum", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "Cargo.lock", "*.min.js", "*.min.css", "*.map",
-    "*.pb.go", "*.generated.*", "dist/", "build/", "node_modules/",
-}
-```
-
-**Estado actual:** Solo hay `MAX_HUNK_CONTENT = 12_000` que trunca diffs largos, pero no excluye archivos.
-
----
-
-### 6. Active Branch Context (Prioridad Media)
-
-**Nuevo tool MCP:**
-```
-getActiveBranchContext(projectId) → {
-  currentBranch, upstream, aheadCount, behindCount,
-  divergentCommits: [{hash, what, author}]
-}
-```
-
-Ejecutable via git commands en el servidor o delegado al script del agente.
-
----
-
-### 7. Impacto Arquitectónico (Prioridad Media)
-
-**Enriquecer metadatos** cuando el commit modifica:
-- Archivos IaC → tag `INFRA_CHANGE` + descripción ("Modifica políticas IAM")
-- Archivos de dependencias → tag `ARCH_CHANGE` + delta de versiones
-- Archivos de seguridad → tag `SEC_CHANGE`
-
-**Implementación:** Nuevo paso en `BatchIndexMemoryHandler` que analice `filePath` y `rawDiff` para generar tags automáticos.
-
----
-
-### 8. Grafos de Dependencia entre Commits (Prioridad Media)
-
-**Concepto:** Si Commit A modifica `/internal/repository/user.go` y Commit B modifica `/infra/dynamo.tf`, vincularlos semánticamente.
-
-**Implementación posible:**
-- Nueva tabla `memory_change_links(source_id, target_id, link_type, confidence)`
-- Job batch que detecte co-ocurrencia de paths relacionados (mismo directorio padre, mismo bounded context)
-- Enriquecer resultados de búsqueda con "commits relacionados"
-
----
-
-## Diagramas de Flujo
-
-### Flujo de Ingesta Actual
-
-```mermaid
-flowchart TD
-    A[git commit] --> B[post-commit hook]
-    B --> C[extract_changes.py]
-    C --> D{--all flag?}
-    D -->|Sí| E[git log --reverse --format=%H]
-    D -->|No| F[Procesar solo HEAD]
-    E --> G[Para cada commit]
-    F --> G
-    G --> H[git diff-tree → lista de archivos]
-    H --> I[Para cada archivo]
-    I --> J[git diff → obtener diff]
-    J --> K[parse_hunks → extraer bloques @@]
-    K --> L[Construir entry con metadata]
-    L --> M{Oracle habilitado?}
-    M -->|Sí| N[Acumular en oracle_pending]
-    N --> O{pending >= MCP_BATCH_SIZE?}
-    O -->|Sí| P[POST /internal/memory/batch]
-    O -->|No| Q[Siguiente archivo]
-    M -->|No| Q
-    P --> Q
-    Q --> I
-    
-    P --> R[BatchIndexMemoryHandler]
-    R --> S[Filtrar ya indexados por commit:file]
-    S --> T[buildEmbedText → intent+what+why+filePath]
-    T --> U[DjlEmbeddingService.embedBatch]
-    U --> V[MemoryChange.index → crear entidad]
-    V --> W[INSERT memory_changes + UPDATE embedding]
-```
-
-### Flujo de Búsqueda Actual
-
-```mermaid
-flowchart TD
-    A[Agente invoca queryMemory/queryCode/queryDocs] --> B[MemoryMcpTools]
-    B --> C[QueryMemoryHandler.handle]
-    C --> D[EmbeddingService.embed → vector del prompt]
-    D --> E{kind especificado?}
-    E -->|Sí| F[findSimilar con filtro kind]
-    E -->|No| G[findSimilar sin filtro]
-    F --> H[SQL: VECTOR_DISTANCE + WHERE kind = ?]
-    G --> I[SQL: VECTOR_DISTANCE sin filtro]
-    H --> J[ORDER BY score ASC, FETCH FIRST N]
-    I --> J
-    J --> K[mapRow → ScoredMemoryChange]
-    K --> L[Retornar lista de MemoryMatchResult al agente]
-```
-
-### Flujo de Pruning Propuesto
-
-```mermaid
-flowchart TD
-    A[Scheduled Job - Diario 3AM] --> B[Seleccionar commits > 30 días]
-    B --> C{Rama feature/* ya mergeada?}
-    C -->|Sí| D[Verificar si squash existe en main]
-    D -->|Squash existe| E[DELETE registros de feature branch]
-    D -->|No squash| F[Mantener como está]
-    C -->|No| G[Consolidar a Memoria Largo Plazo]
-    G --> H[Eliminar raw_diff, content_before, content_after]
-    H --> I[Re-generar embedding con commitMsg + fileList]
-    I --> J[UPDATE memory_changes SET embedding = nuevo_vector]
-    J --> K[DELETE hunks asociados]
-    K --> L[Log: N registros consolidados]
-```
-
-### Flujo de Búsqueda Híbrida Propuesto
-
-```mermaid
-flowchart TD
-    A[Agente invoca hybridSearchCommits] --> B[Parámetros: prompt, projectId, limit, branch?, author?, since?, fileLike?]
-    B --> C[EmbeddingService.embed → vector]
-    C --> D[Construir SQL dinámico]
-    D --> E[VECTOR_DISTANCE + WHERE clauses opcionales]
-    E --> F[Ejecutar query con parámetros]
-    F --> G[Retornar resultados rankeados]
-```
-
----
-
-## Diagramas de Secuencia
-
-### Secuencia: Ingesta Post-Commit Completa
-
-```mermaid
-sequenceDiagram
-    participant Git as Git Hook
-    participant Py as extract_changes.py
-    participant API as REST /internal/memory/batch
-    participant Handler as BatchIndexMemoryHandler
-    participant Repo as MemoryChangeRepository
-    participant DJL as DjlEmbeddingService
-    participant DB as Oracle 23ai
-
-    Git->>Py: post-commit trigger
-    Py->>Py: git log -1 → commit metadata
-    Py->>Py: git diff-tree → archivos modificados
-    loop Para cada archivo
-        Py->>Py: git diff → obtener diff
-        Py->>Py: parse_hunks() → bloques @@
-        Py->>Py: to_oracle_entry() → construir payload
-    end
-    Py->>API: POST /internal/memory/batch {apiKey, entries[]}
-    API->>Handler: handle(Command)
-    Handler->>Repo: findIndexedCommitFilePairs(projectId)
-    Repo->>DB: SELECT commit_hash, file_path
-    DB-->>Repo: Set<"hash:path">
-    Repo-->>Handler: indexed pairs
-    Handler->>Handler: Filtrar entries ya indexados
-    loop Chunks de 50
-        Handler->>Handler: buildEmbedText(intent, what, why, filePath)
-        Handler->>DJL: embedBatch(texts)
-        DJL-->>Handler: List<EmbeddingVector>
-        Handler->>Handler: MemoryChange.index() + assignEmbedding()
-        Handler->>Repo: saveAll(changes)
-        Repo->>DB: BATCH INSERT memory_changes
-        Repo->>DB: BATCH UPDATE embedding (VECTOR)
-    end
-    Handler-->>API: Result{inserted, skipped}
-    API-->>Py: HTTP 200 {inserted, skipped}
-```
-
-### Secuencia: Búsqueda Semántica (queryMemory)
-
-```mermaid
-sequenceDiagram
-    participant Agent as AI Agent (Claude/Kiro)
-    participant MCP as MemoryMcpTools
-    participant QH as QueryMemoryHandler
-    participant ES as EmbeddingService
-    participant Repo as MemoryChangeRepositoryAdapter
-    participant DB as Oracle 23ai
-
-    Agent->>MCP: queryMemory(prompt, projectId, limit)
-    MCP->>QH: handle(Query{prompt, projectId, limit, null})
-    QH->>ES: embed(prompt)
-    ES->>ES: DJL multilingual-e5-small inference
-    ES-->>QH: EmbeddingVector(float[384])
-    QH->>Repo: findSimilar(vector, projectId, limit)
-    Repo->>Repo: toOracleVector(float[]) → VECTOR
-    Repo->>DB: SELECT ... VECTOR_DISTANCE(embedding, ?, COSINE) ORDER BY score FETCH FIRST ?
-    DB-->>Repo: ResultSet rows
-    Repo->>Repo: mapRow() → ScoredMemoryChange (score = 1 - distance)
-    Repo-->>QH: List<ScoredMemoryChange>
-    QH-->>MCP: results
-    MCP->>MCP: toResult() → MemoryMatchResult
-    MCP-->>Agent: List<MemoryMatchResult>
-```
-
-### Secuencia: Session Start con Memory Bootstrap
-
-```mermaid
-sequenceDiagram
-    participant Hook as session-start.sh
-    participant FS as Filesystem
-    participant Git as Git CLI
-    participant Py as extract_changes.py
-    participant API as MCP Server
-
-    Hook->>FS: Leer .agents/config.json
-    FS-->>Hook: {apiKey, serverUrl, projectId}
-    Hook->>FS: Leer .agents/memory.state.json
-    FS-->>Hook: {initialized, last_indexed_commit}
-    Hook->>Git: git rev-parse HEAD
-    Git-->>Hook: current_head
-    alt Primera vez (initialized=false)
-        Hook->>Py: extract_changes.py --all --api-key KEY (background)
-        Hook->>FS: Actualizar memory.state.json {initialized:true, last:HEAD}
-    else Hay commits nuevos
-        Hook->>Git: git log LAST..HEAD --oneline | wc -l
-        Git-->>Hook: N commits nuevos
-        Hook->>Py: extract_changes.py --all --api-key KEY (background)
-        Hook->>FS: Actualizar memory.state.json
-    else Ya está al día
-        Hook->>Hook: MEM_STATUS = "Memory up to date"
-    end
-    Hook->>Hook: Detectar stack del proyecto
-    Hook-->>Hook: Output JSON con additionalContext
-```
-
-### Secuencia: Búsqueda Híbrida Propuesta
-
-```mermaid
-sequenceDiagram
-    participant Agent as AI Agent
-    participant MCP as MemoryMcpTools
-    participant QH as QueryMemoryHandler
-    participant ES as EmbeddingService
-    participant Repo as MemoryChangeRepository
-    participant DB as Oracle 23ai
-
-    Agent->>MCP: hybridSearchCommits(prompt, projectId, limit, branch?, author?, since?)
-    MCP->>QH: handle(HybridQuery{...})
-    QH->>ES: embed(prompt)
-    ES-->>QH: EmbeddingVector
-    QH->>QH: Construir filtros opcionales
-    QH->>Repo: findSimilarHybrid(vector, projectId, limit, filters)
-    Repo->>Repo: Construir SQL dinámico con WHERE clauses
-    Repo->>DB: VECTOR_DISTANCE + WHERE branch=? AND author=? AND created_at>=?
-    DB-->>Repo: ResultSet filtrado
-    Repo-->>QH: List<ScoredMemoryChange>
-    QH-->>MCP: results
-    MCP-->>Agent: List<MemoryMatchResult>
-```
-
-### Secuencia: Commit Lineage Propuesto
-
-```mermaid
-sequenceDiagram
-    participant Agent as AI Agent
-    participant MCP as MemoryMcpTools
-    participant Handler as CommitLineageHandler
-    participant Repo as MemoryChangeRepository
-    participant DB as Oracle 23ai
-
-    Agent->>MCP: getCommitLineage(commitHash, projectId, window=3)
-    MCP->>Handler: handle(commitHash, projectId, window)
-    Handler->>Repo: findByCommitHash(projectId, commitHash)
-    Repo->>DB: SELECT created_at WHERE commit_hash = ?
-    DB-->>Repo: timestamp del commit target
-    Handler->>Repo: findNeighborCommits(projectId, timestamp, window)
-    Repo->>DB: SELECT DISTINCT commit_hash, what, why, created_at WHERE ABS(delta) < window_days ORDER BY created_at
-    DB-->>Repo: commits vecinos
-    Repo-->>Handler: List<MemoryChange>
-    Handler->>Handler: Agrupar por commit_hash, construir timeline
-    Handler-->>MCP: CommitLineageResult{before[], target, after[]}
-    MCP-->>Agent: Timeline de commits con contexto
-```
-
----
-
-## Arquitectura de Componentes
-
-```mermaid
-flowchart LR
-    subgraph Cliente
-        A[AI Agent<br/>Claude / Kiro]
-    end
-
-    subgraph MCP Server - Spring Boot
-        B[MCP Tools<br/>stdio / http-sse]
-        C[Application Layer<br/>Handlers CQRS]
-        D[Domain Layer<br/>Entities + VOs]
-        E[Infrastructure<br/>Persistence + Embedding]
-    end
-
-    subgraph Oracle 23ai Docker
-        F[(memory_changes<br/>VECTOR 384 FLOAT32)]
-        G[(skills / skill_chunks)]
-        H[(documents / sections)]
-        I[HNSW Vector Indexes]
-    end
-
-    subgraph Scripts Cliente
-        J[session-start.sh]
-        K[post-commit hook]
-        L[extract_changes.py]
-    end
-
-    A -->|MCP Protocol| B
-    B --> C
-    C --> D
-    C --> E
-    E -->|JDBC + VECTOR| F
-    E -->|JDBC + VECTOR| G
-    E -->|JDBC + VECTOR| H
-    F --- I
-    G --- I
-    H --- I
-
-    K --> L
-    J --> L
-    L -->|REST POST /internal/memory/batch| C
-```
+En vez de inyectar documentación masiva, el harness indexa y "digiere" capacidades reutilizables, proporcionando resúmenes accionables que no asfixian el contexto.
 
 ---
 
@@ -572,17 +281,20 @@ flowchart LR
 
 | Fase | Mejoras | Semanas Est. |
 |------|---------|--------------|
-| **Fase 1 — Quick Wins** | Metadata Trimming (#5), Active Branch Context (#6), Commit Lineage (#3) | 1-2 |
-| **Fase 2 — Búsqueda** | Búsqueda Híbrida (#1), Impacto Arquitectónico (#7) | 2-3 |
-| **Fase 3 — Ingesta** | Chunking Inteligente (#4), Grafos de Dependencia (#8) | 3-4 |
-| **Fase 4 — Mantenimiento** | Memory Pruning (#2) — requiere datos históricos para validar | 2-3 |
+| **Fase 1 — Quick Wins** | I1 (Trimming), B2 (Lineage), B3 (Branch Context), S1 (Validate Setup) | 1-2 |
+| **Fase 2 — Búsqueda** | B1 (Híbrida), I3 (Impacto Arquitectónico) | 2-3 |
+| **Fase 3 — Disciplina** | D1 (TDD), D5 (Skills Digest), S3 (Linters) | 2-3 |
+| **Fase 4 — Ingesta** | I2 (Chunking), B4 (Grafos) | 3-4 |
+| **Fase 5 — Mantenimiento** | M1 (Pruning) — requiere datos históricos para validar | 2-3 |
+| **Fase 6 — Autonomía** | D2 (Verificación), D3 (Permisos), D4 (SDD-IA) | 4-6 |
 
 ---
 
 ## Notas Técnicas
 
-- **Modelo de embeddings:** `multilingual-e5-small` (384 dims) — ya alineado entre ingesta y búsqueda ✅
-- **Índices HNSW:** Target accuracy 95% — suficiente para el volumen actual
-- **Batch size:** 50 en Java handler, 10 en Python script — considerar unificar
-- **Dual-write Chroma + Oracle:** El script soporta ambos, pero Oracle es el store autoritativo
-- **Limitación actual:** No hay re-indexación si el modelo de embeddings cambia — necesitaría migration tool
+- **Modelo de embeddings:** `multilingual-e5-small` (384 dims) — alineado entre ingesta y búsqueda ✅
+- **Índices HNSW:** Target accuracy 95%
+- **Batch size:** 25 en Python script, 50 en Java handler (chunks internos)
+- **Oracle es el store autoritativo** — Chroma es opcional/local
+- **Limitación:** No hay re-indexación si cambia el modelo de embeddings
+- **Enrichment LLM:** Intercambiable via interface (`OpenAI` → `Ollama` → `Claude`)

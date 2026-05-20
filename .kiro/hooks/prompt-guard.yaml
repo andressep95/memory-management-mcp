@@ -1,0 +1,11 @@
+name: prompt-guard
+description: >
+  Reminds the agent to call querySkills and queryMemory before any file write or command execution.
+  Fires once per session on first tool use attempt.
+trigger:
+  type: PreToolUse
+  matcher: Write|Edit|Bash
+action:
+  type: command
+  command: .agents/scripts/prompt-guard.sh
+  timeout: 3

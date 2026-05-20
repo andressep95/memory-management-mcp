@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Hook SessionStart — MCP Memory Management
 #
-# Detects the project stack from build files and injects it as context.
+# 1. Validates setup integrity (runtime gate — agent cannot skip this)
+# 2. Detects the project stack from build files
+# 3. Bootstraps memory indexing if needed
 #
 # Input:  JSON on stdin (ignored — we read the filesystem)
 # Output: JSON on stdout with additionalContext
@@ -10,6 +12,25 @@ set -uo pipefail
 cat > /dev/null  # drain stdin
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# ── Setup Validation Gate ──────────────────────────────────────────────────
+VALIDATE_SCRIPT="$ROOT/.agents/scripts/validate-setup.sh"
+if [ -x "$VALIDATE_SCRIPT" ]; then
+  VALIDATION_OUTPUT=$("$VALIDATE_SCRIPT" 2>&1)
+  if [ $? -ne 0 ]; then
+    # Setup incomplete — output fix instructions and exit
+    python3 -c "
+import json, sys
+print(json.dumps({
+    'hookSpecificOutput': {
+        'hookEventName': 'SessionStart',
+        'additionalContext': sys.stdin.read()
+    }
+}))
+" <<< "$VALIDATION_OUTPUT"
+    exit 0
+  fi
+fi
 STACK=""
 
 if [ -f "$ROOT/pom.xml" ]; then

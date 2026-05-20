@@ -2,11 +2,7 @@
 # Hook PreToolUse — Driven Agent Development
 #
 # Intercepts `git commit` commands and blocks them if the commit body
-# is missing what:, why:, or breaking: fields. These fields feed the
-# RAG memory system — without them, future context is lost.
-#
-# Input:  JSON on stdin  { "tool_name": "Bash", "tool_input": { "command": "..." } }
-# Output: JSON on stdout with permissionDecision deny if invalid
+# is missing what:, why:, or breaking: fields.
 
 set -uo pipefail
 
@@ -39,7 +35,7 @@ print(json.dumps({
     'hookSpecificOutput': {
         'hookEventName': 'PreToolUse',
         'permissionDecision': 'deny',
-        'permissionDecisionReason': f'Commit body is missing: {missing}. Rewrite with what:, why:, and breaking: fields. These feed the RAG memory — without them, future context is lost. Example:\n\ngit commit -m \"feat(auth): add JWT validation\" -m \"what: Added JwtTokenValidator with RS256 support\nwhy: API endpoints need stateless auth\nbreaking: none\"'
+        'permissionDecisionReason': f'Commit body is missing: {missing}. Rewrite with what:, why:, and breaking: fields.'
     }
 }))
 " "$MISSING"

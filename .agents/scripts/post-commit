@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # Memory + Changelog — git post-commit hook.
-# 1. Pushes diff to MCP server for semantic indexing
-# 2. Regenerates CHANGELOG.md for notable commit types
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPTS="$REPO_ROOT/.agents/scripts"

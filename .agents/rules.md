@@ -37,6 +37,7 @@ prompt received
 | `getIndexedCommits` | Check indexing status | on demand |
 | `syncSkill` | After creating/modifying a skill | on demand |
 | `setupProject` | First-time project setup | once |
+| `confirmSetup` | After applying setupProject blueprint | once |
 
 ## Config
 

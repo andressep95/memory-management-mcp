@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
 """
 Post-commit extractor — dual-write to ChromaDB + Oracle MCP server.
-
 Granularity: 1 record per file per commit.
-  - Chroma : embedded semantic desc (what/why) — fast local search
-  - Oracle : same data via REST batch API — persistent, VECTOR index
-
-Run modes:
-  python3 extract_changes.py              # index HEAD (post-commit hook)
-  python3 extract_changes.py --ref <sha>  # index a specific commit
-  python3 extract_changes.py --all        # replay full git history
-
-Diff strategy (--all):
-  1. Ask Oracle which commits are already indexed (GET /api/memory/commits)
-  2. Ask Chroma which commits are already indexed
-  3. Only process commits missing from each store
-  Oracle is authoritative for the diff — avoids re-embedding on restart.
 """
 
 import os
@@ -27,16 +13,12 @@ import warnings
 warnings.filterwarnings("ignore", message=".*unauthenticated.*")
 warnings.filterwarnings("ignore", message=".*HF_TOKEN.*")
 
-import json
-import re
-import subprocess
-import sys
+import json, re, subprocess, sys
 from pathlib import Path
 
-CHROMA_BATCH      = 100
-MCP_BATCH_SIZE    = 25         # entries per /api/memory/batch call
-MAX_HUNK_CONTENT  = 8_000
-MAX_HUNK_DIFF     = 4_000      # cap per individual hunk diff lines
+CHROMA_BATCH = 100
+MCP_BATCH_SIZE = 25
+MAX_HUNK_CONTENT = 12_000
 
 LANGUAGE_MAP = {
     ".java": "java", ".kt": "kotlin", ".scala": "scala",
@@ -54,8 +36,7 @@ LANGUAGE_MAP = {
 
 
 def run(cmd: str) -> str:
-    result = subprocess.run(cmd, shell=True, capture_output=True)
-    return result.stdout.decode("utf-8", errors="replace").strip()
+    return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
 
 
 def detect_language(path: str) -> str:
@@ -63,25 +44,20 @@ def detect_language(path: str) -> str:
 
 
 def file_kind(path: str) -> str:
-    ext  = Path(path).suffix.lower()
+    ext = Path(path).suffix.lower()
     name = Path(path).stem.lower()
-    if ext in {".sh", ".bash", ".zsh"}:
-        return "script"
+    if ext in {".sh", ".bash", ".zsh"}: return "script"
     if ext in {".py", ".go", ".ts", ".tsx", ".js", ".jsx", ".rs",
                ".java", ".kt", ".c", ".cpp", ".rb", ".cs"}:
         return "test" if "test" in name or "spec" in name else "source"
-    if ext in {".json", ".yaml", ".yml", ".toml", ".env", ".ini", ".cfg"}:
-        return "config"
-    if ext in {".md", ".txt", ".rst", ".adoc"}:
-        return "doc"
-    if ext in {".css", ".scss", ".sass", ".less"}:
-        return "style"
+    if ext in {".json", ".yaml", ".yml", ".toml", ".env", ".ini", ".cfg"}: return "config"
+    if ext in {".md", ".txt", ".rst", ".adoc"}: return "doc"
+    if ext in {".css", ".scss", ".sass", ".less"}: return "style"
     return "other"
 
 
 def memory_kind(path: str) -> str:
-    """Maps a file path to 'code', 'doc', or 'config' for storage discrimination."""
-    ext   = Path(path).suffix.lower()
+    ext = Path(path).suffix.lower()
     lower = path.lower()
     CODE_EXT = {
         ".java", ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs",
@@ -91,92 +67,74 @@ def memory_kind(path: str) -> str:
         ".pl", ".r", ".jl", ".zig",
     }
     DOC_EXT = {".md", ".mdx", ".rst", ".adoc", ".txt"}
-    if ext in CODE_EXT:
-        return "code"
-    if ext in DOC_EXT:
-        return "doc"
+    if ext in CODE_EXT: return "code"
+    if ext in DOC_EXT: return "doc"
     if ext in {".yaml", ".yml", ".json", ".toml", ".xml"}:
         if any(s in lower for s in ("openapi", "swagger", "api-spec", "docs/", "doc/", "spec/")):
             return "doc"
     return "config"
 
 
-def parse_commit_parts(intent: str) -> tuple[str, str]:
+def parse_commit_parts(intent: str) -> tuple:
     m = re.match(r"^(\w+)(?:\(([\w/.-]+)\))?:", intent)
     return (m.group(1) if m else "", m.group(2) if m and m.group(2) else "")
 
 
-def parse_body(body: str) -> tuple[str, str, bool]:
+def parse_body(body: str) -> tuple:
     what, why, breaking = "", "", False
     for line in body.splitlines():
-        if line.startswith("what:"):      what     = line[5:].strip()
-        elif line.startswith("why:"):     why      = line[4:].strip()
+        if line.startswith("what:"):      what = line[5:].strip()
+        elif line.startswith("why:"):     why = line[4:].strip()
         elif line.startswith("breaking:"): breaking = line[9:].strip().lower() == "true"
     return what, why, breaking
 
 
-def parse_hunks(diff: str) -> list[dict]:
+def parse_hunks(diff: str) -> list:
     hunks, current = [], None
     for line in diff.splitlines():
         if line.startswith("@@"):
-            if current:
-                hunks.append(current)
+            if current: hunks.append(current)
             m = re.match(r"@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)", line)
-            if not m:
-                continue
+            if not m: continue
             start = int(m.group(1))
             count = int(m.group(2)) if m.group(2) is not None else 1
             current = {
-                "symbol":      m.group(3).strip(),
-                "lines_start": start,
-                "lines_end":   start + max(count - 1, 0),
-                "adds":        False,
-                "dels":        False,
-                "diff":        [],
+                "symbol": m.group(3).strip(),
+                "lines_start": start, "lines_end": start + max(count - 1, 0),
+                "adds": False, "dels": False, "diff": [],
             }
         elif current is not None:
             if line.startswith("+") and not line.startswith("+++"):
-                current["adds"] = True
-                current["diff"].append(line)
+                current["adds"] = True; current["diff"].append(line)
             elif line.startswith("-") and not line.startswith("---"):
-                current["dels"] = True
-                current["diff"].append(line)
-    if current:
-        hunks.append(current)
+                current["dels"] = True; current["diff"].append(line)
+    if current: hunks.append(current)
     return hunks
 
 
-def overall_change_type(hunks: list[dict]) -> str:
+def overall_change_type(hunks: list) -> str:
     has_adds = any(h["adds"] for h in hunks)
     has_dels = any(h["dels"] for h in hunks)
-    if has_adds and has_dels:
-        return "modification"
+    if has_adds and has_dels: return "modification"
     return "addition" if has_adds else "deletion"
 
 
-def semantic_desc(what: str, why: str, intent: str, file: str) -> str:
-    if what and why:
-        return f"{what} — {why}"
-    if what:
-        return f"{what} ({file})"
-    if why:
-        return f"{intent} — {why}"
+def semantic_desc(what, why, intent, file) -> str:
+    if what and why: return f"{what} — {why}"
+    if what: return f"{what} ({file})"
+    if why: return f"{intent} — {why}"
     return f"{intent} ({file})"
 
 
 def resolve_branch(ref: str) -> str:
-    if ref == "HEAD":
-        return run("git rev-parse --abbrev-ref HEAD")
+    if ref == "HEAD": return run("git rev-parse --abbrev-ref HEAD")
     raw = run(f"git branch --contains {ref} --format='%(refname:short)' 2>/dev/null")
     candidates = [b.strip().strip("'") for b in raw.splitlines() if b.strip()]
     main_branch = [b for b in candidates if b in ("main", "master")]
     return main_branch[0] if main_branch else (candidates[0] if candidates else "unknown")
 
 
-# ── Oracle MCP REST helpers ──────────────────────────────────────────────────
-
-def oracle_get_indexed_commits(api_key: str, base_url: str) -> set[str]:
-    """Returns set of commit hashes already indexed in Oracle."""
+def oracle_get_indexed_commits(api_key, base_url) -> set:
     try:
         import urllib.request
         url = f"{base_url}/internal/memory/commits?apiKey={api_key}"
@@ -187,10 +145,8 @@ def oracle_get_indexed_commits(api_key: str, base_url: str) -> set[str]:
         return set()
 
 
-def oracle_batch_push(api_key: str, entries: list[dict], base_url: str) -> tuple[int, int]:
-    """POST a batch of entries to /internal/memory/batch. Returns (inserted, skipped)."""
-    if not entries:
-        return 0, 0
+def oracle_batch_push(api_key, entries, base_url) -> tuple:
+    if not entries: return 0, 0
     try:
         import urllib.request
         payload = json.dumps({"apiKey": api_key, "entries": entries}).encode()
@@ -208,299 +164,175 @@ def oracle_batch_push(api_key: str, entries: list[dict], base_url: str) -> tuple
         return 0, 0
 
 
-# ── Core commit processing ───────────────────────────────────────────────────
-
-def extract_commit_data(ref: str, project: str) -> tuple[str, list[dict]]:
-    """
-    Extract all file-level change data for a commit.
-    Returns (short_hash, list_of_file_entries).
-    Does NOT write to any store — caller decides where to write.
-    """
+def extract_commit_data(ref, project):
     commit = run(f"git log -1 --format=%h {ref}")
     author = run(f"git log -1 --format=%an {ref}")
-    ts     = run(f"git log -1 --format=%cI {ref}")[:10]
+    ts = run(f"git log -1 --format=%cI {ref}")[:10]
     intent = run(f"git log -1 --format=%s {ref}")
-    body   = run(f"git log -1 --format=%b {ref}")
+    body = run(f"git log -1 --format=%b {ref}")
     branch = resolve_branch(ref)
-
     what, why, breaking = parse_body(body)
-    commit_type, scope  = parse_commit_parts(intent)
-
+    commit_type, scope = parse_commit_parts(intent)
     parent = run(f"git rev-parse --verify {ref}~1 2>/dev/null")
-    if not parent:
-        parent = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-
+    if not parent: parent = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
     all_files = [f for f in run(f"git diff-tree --no-commit-id -r --name-only {ref}").splitlines() if f]
 
     entries = []
     for file in all_files:
-        kind  = file_kind(file)
+        kind = file_kind(file)
         mkind = memory_kind(file)
-        lang  = detect_language(file)
-
+        lang = detect_language(file)
         diff = (run(f'git diff {parent} {ref} -- "{file}" 2>/dev/null')
                 or run(f'git show {ref} -- "{file}"'))
-
-        lines    = diff.splitlines()
+        lines = diff.splitlines()
         start_ix = next((i for i, l in enumerate(lines) if l.startswith("@@")), None)
         diff_body = "\n".join(lines[start_ix:]) if start_ix is not None else ""
-
         hunks = parse_hunks(diff_body)
         if not hunks:
-            hunks = [{
-                "symbol": "", "lines_start": 1, "lines_end": 1,
-                "adds": any(l.startswith("+") for l in lines),
-                "dels": any(l.startswith("-") for l in lines),
-                "diff": [],
-            }]
-
+            hunks = [{"symbol": "", "lines_start": 1, "lines_end": 1,
+                      "adds": any(l.startswith("+") for l in lines),
+                      "dels": any(l.startswith("-") for l in lines), "diff": []}]
         ctype = overall_change_type(hunks)
-        tags  = [t for t in [commit_type, ctype, kind, scope] if t]
+        tags = [t for t in [commit_type, ctype, kind, scope] if t]
         sdesc = semantic_desc(what, why, intent, file)
         hunk_content = diff_body[:MAX_HUNK_CONTENT]
-
-        content_before = run(f'git show {parent}:"{file}" 2>/dev/null')[:MAX_HUNK_CONTENT]
-        content_after  = run(f'git show {ref}:"{file}" 2>/dev/null')[:MAX_HUNK_CONTENT]
-
         entries.append({
-            "commit":         commit,
-            "author":         author,
-            "ts":             ts,
-            "intent":         intent,
-            "branch":         branch,
-            "what":           what,
-            "why":            why,
-            "commit_type":    commit_type,
-            "scope":          scope,
-            "file":           file,
-            "file_kind":      kind,
-            "memory_kind":    mkind,
-            "language":       lang,
-            "change_type":    ctype,
-            "tags":           tags,
-            "breaking":       breaking,
-            "sdesc":          sdesc,
-            "hunk_content":   hunk_content,
-            "hunks":          hunks,
-            "content_before": content_before,
-            "content_after":  content_after,
+            "commit": commit, "author": author, "ts": ts, "intent": intent,
+            "branch": branch, "what": what, "why": why,
+            "commit_type": commit_type, "scope": scope, "file": file,
+            "file_kind": kind, "memory_kind": mkind, "language": lang,
+            "change_type": ctype, "tags": tags, "breaking": breaking,
+            "sdesc": sdesc, "hunk_content": hunk_content, "hunks": hunks,
         })
-
     return commit, entries
 
 
-def push_to_chroma(entries: list[dict], existing: set[str], collection) -> int:
-    ids, documents, metadatas = [], [], []
-    for e in entries:
-        rid = f"{e['commit']}:{e['file']}"
-        if rid in existing:
-            continue
-        ids.append(rid)
-        documents.append(e["sdesc"])
-        metadatas.append({
-            "file":         e["file"],
-            "file_kind":    e["file_kind"],
-            "kind":         e.get("memory_kind", "config"),
-            "language":     e["language"],
-            "what":         e["what"],
-            "why":          e["why"],
-            "intent":       e["intent"],
-            "commit_type":  e["commit_type"],
-            "scope":        e["scope"],
-            "change_type":  e["change_type"],
-            "commit":       e["commit"],
-            "branch":       e["branch"],
-            "project":      e.get("project", ""),
-            "ts":           e["ts"],
-            "author":       e["author"],
-            "tags":         ",".join(e["tags"]),
-            "hunks_count":  len(e["hunks"]),
-            "hunk_content": e["hunk_content"],
-            "breaking":     str(e["breaking"]).lower(),
-        })
-
-    if not ids:
-        return 0
-
-    for i in range(0, len(ids), CHROMA_BATCH):
-        collection.upsert(
-            ids=ids[i:i + CHROMA_BATCH],
-            documents=documents[i:i + CHROMA_BATCH],
-            metadatas=metadatas[i:i + CHROMA_BATCH],
-        )
-    return len(ids)
-
-
-def to_oracle_entry(e: dict) -> dict:
+def to_oracle_entry(e):
     return {
-        "commitHash":    e["commit"],
-        "branch":        e["branch"],
-        "author":        e["author"],
-        "filePath":      e["file"],
-        "intent":        e["commit_type"] or None,
-        "what":          e["what"] or e["intent"],
-        "why":           e["why"] or None,
-        "kind":          e.get("memory_kind", "config"),
-        "language":      e["language"],
-        "tags":          e["tags"],
-        "rawDiff":       e.get("hunk_content") or None,
-        "contentBefore": e.get("content_before") or None,
-        "contentAfter":  e.get("content_after") or None,
-        "hunks": [
-            {
-                "linesStart": h["lines_start"],
-                "linesEnd":   h["lines_end"],
-                "symbol":     h.get("symbol", ""),
-                "changeType": ("addition" if h["adds"] and not h["dels"]
-                               else "deletion" if h["dels"] and not h["adds"]
-                               else "modification"),
-                "hunkDiff":   "\n".join(h.get("diff", []))[:MAX_HUNK_DIFF],
-            }
-            for h in e["hunks"]
-        ],
+        "commitHash": e["commit"], "branch": e["branch"], "author": e["author"],
+        "filePath": e["file"], "intent": e["commit_type"] or None,
+        "what": e["what"] or e["intent"], "why": e["why"] or None,
+        "kind": e.get("memory_kind", "config"), "language": e["language"],
+        "tags": e["tags"],
+        "hunks": [{"linesStart": h["lines_start"], "linesEnd": h["lines_end"],
+                   "symbol": h.get("symbol", ""),
+                   "changeType": ("addition" if h["adds"] and not h["dels"]
+                                  else "deletion" if h["dels"] and not h["adds"]
+                                  else "modification"),
+                   "hunkDiff": "\n".join(h.get("diff", []))} for h in e["hunks"]],
     }
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+def push_to_chroma(entries, existing, collection):
+    ids, documents, metadatas = [], [], []
+    for e in entries:
+        rid = f"{e['commit']}:{e['file']}"
+        if rid in existing: continue
+        ids.append(rid)
+        documents.append(e["sdesc"])
+        metadatas.append({
+            "file": e["file"], "file_kind": e["file_kind"],
+            "kind": e.get("memory_kind", "config"), "language": e["language"],
+            "what": e["what"], "why": e["why"], "intent": e["intent"],
+            "commit_type": e["commit_type"], "scope": e["scope"],
+            "change_type": e["change_type"], "commit": e["commit"],
+            "branch": e["branch"], "project": e.get("project", ""),
+            "ts": e["ts"], "author": e["author"],
+            "tags": ",".join(e["tags"]), "hunks_count": len(e["hunks"]),
+            "hunk_content": e["hunk_content"],
+            "breaking": str(e["breaking"]).lower(),
+        })
+    if not ids: return 0
+    for i in range(0, len(ids), CHROMA_BATCH):
+        collection.upsert(ids=ids[i:i+CHROMA_BATCH], documents=documents[i:i+CHROMA_BATCH], metadatas=metadatas[i:i+CHROMA_BATCH])
+    return len(ids)
 
-def main() -> None:
+
+def main():
     import argparse, io, contextlib
-
     p = argparse.ArgumentParser()
-    p.add_argument("--ref",        default="HEAD")
-    p.add_argument("--all",        action="store_true")
-    p.add_argument("--chroma",     default=".agents/memory/chroma")
+    p.add_argument("--ref", default="HEAD")
+    p.add_argument("--all", action="store_true")
+    p.add_argument("--chroma", default=".agents/memory/chroma")
     p.add_argument("--collection", default="changes")
-    p.add_argument("--mcp-url",  default="http://localhost:8080",
-                   help="Base URL of the MCP Spring Boot server")
-    p.add_argument("--api-key", default="",
-                   help="Project API key — obtain once via POST /api/projects")
-    p.add_argument("--no-oracle",  action="store_true", help="Skip Oracle writes")
-    p.add_argument("--no-chroma",  action="store_true", help="Skip Chroma writes")
+    p.add_argument("--mcp-url", default="http://localhost:8080")
+    p.add_argument("--api-key", default="")
+    p.add_argument("--no-oracle", action="store_true")
+    p.add_argument("--no-chroma", action="store_true")
     args = p.parse_args()
 
-    # ── Chroma setup ──────────────────────────────────────────────────────
     collection = None
     if not args.no_chroma:
         try:
             import chromadb
             from chromadb.utils import embedding_functions
         except ImportError:
-            print("ERROR: pip install chromadb", file=sys.stderr)
-            sys.exit(1)
+            print("ERROR: pip install chromadb", file=sys.stderr); sys.exit(1)
         client = chromadb.PersistentClient(path=args.chroma)
         with contextlib.redirect_stderr(io.StringIO()):
-            ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="intfloat/multilingual-e5-small"
-            )
-        collection = client.get_or_create_collection(
-            name=args.collection,
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"},
-        )
+            ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="intfloat/multilingual-e5-small")
+        collection = client.get_or_create_collection(name=args.collection, embedding_function=ef, metadata={"hnsw:space": "cosine"})
 
     project_name = Path(run("git rev-parse --show-toplevel")).name
-
-    # ── Oracle setup ──────────────────────────────────────────────────────
     oracle_api_key = args.api_key.strip() or None
-    mcp_url = args.mcp_url
-
-    # Fallback: read from .agents/config.json if args not provided
-    if not oracle_api_key or mcp_url == "http://localhost:8080":
-        config_path = Path(run("git rev-parse --show-toplevel")) / ".agents" / "config.json"
-        if config_path.exists():
-            cfg = json.loads(config_path.read_text())
-            if not oracle_api_key:
-                oracle_api_key = cfg.get("apiKey")
-            if mcp_url == "http://localhost:8080":
-                mcp_url = cfg.get("serverUrl", mcp_url)
-
     if not args.no_oracle and not oracle_api_key:
-        print("[oracle] No --api-key provided and no .agents/config.json found — Oracle writes disabled.", file=sys.stderr)
+        print("[oracle] No --api-key provided — Oracle writes disabled.", file=sys.stderr)
 
-    # ── Indexed sets for diff ─────────────────────────────────────────────
-    oracle_indexed: set[str] = set()
+    oracle_indexed = set()
     if oracle_api_key:
         print("[oracle] Fetching already-indexed commits...")
-        oracle_indexed = oracle_get_indexed_commits(oracle_api_key, mcp_url)
+        oracle_indexed = oracle_get_indexed_commits(oracle_api_key, args.mcp_url)
         print(f"[oracle] {len(oracle_indexed)} commits already indexed.")
 
-    # ── Process commits ───────────────────────────────────────────────────
     if args.all:
         commits = [c for c in run("git log --reverse --format=%H").splitlines() if c]
-        total   = len(commits)
+        total = len(commits)
         chroma_total = oracle_total = 0
-        oracle_pending: list[dict] = []
-
+        oracle_pending = []
         for i, full_hash in enumerate(commits, 1):
             short = full_hash[:7]
             print(f"  [{i}/{total}] {short}", end="\r", flush=True)
-
             commit_hash, entries = extract_commit_data(full_hash, project_name)
-            if not entries:
-                continue
-
-            # Chroma
+            if not entries: continue
             if collection is not None:
-                chroma_existing: set[str] = set()
+                chroma_existing = set()
                 if collection.count() > 0:
-                    chroma_existing = set(collection.get(
-                        where={"commit": commit_hash}, include=[])["ids"])
-                for e in entries:
-                    e["project"] = project_name
+                    chroma_existing = set(collection.get(where={"commit": commit_hash}, include=[])["ids"])
+                for e in entries: e["project"] = project_name
                 chroma_total += push_to_chroma(entries, chroma_existing, collection)
-
-            # Oracle — accumulate if not already indexed
             if oracle_api_key and commit_hash not in oracle_indexed:
                 oracle_pending.extend(to_oracle_entry(e) for e in entries)
-
-            # Flush Oracle in real chunks of MCP_BATCH_SIZE (not all at once)
             while oracle_api_key and len(oracle_pending) >= MCP_BATCH_SIZE:
                 batch = oracle_pending[:MCP_BATCH_SIZE]
                 del oracle_pending[:MCP_BATCH_SIZE]
-                ins, _ = oracle_batch_push(oracle_api_key, batch, mcp_url)
+                ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
                 oracle_total += ins
-
-        # Final Oracle flush — drain any remaining entries
         while oracle_pending and oracle_api_key:
             batch = oracle_pending[:MCP_BATCH_SIZE]
             del oracle_pending[:MCP_BATCH_SIZE]
-            ins, _ = oracle_batch_push(oracle_api_key, batch, mcp_url)
+            ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
             oracle_total += ins
-
         print(f"\n[memory] Done. {total} commits processed.")
-        if collection is not None:
-            print(f"  Chroma: {chroma_total} file(s) indexed.")
-        if oracle_api_key:
-            print(f"  Oracle: {oracle_total} file(s) indexed.")
-
+        if collection is not None: print(f"  Chroma: {chroma_total} file(s) indexed.")
+        if oracle_api_key: print(f"  Oracle: {oracle_total} file(s) indexed.")
     else:
         commit_hash, entries = extract_commit_data(args.ref, project_name)
         if not entries:
-            print(f"[memory] No files changed in {commit_hash}.")
-            return
-
+            print(f"[memory] No files changed in {commit_hash}."); return
         chroma_n = oracle_n = 0
-
         if collection is not None:
-            chroma_existing: set[str] = set()
+            chroma_existing = set()
             if collection.count() > 0:
-                chroma_existing = set(collection.get(
-                    where={"commit": commit_hash}, include=[])["ids"])
-            for e in entries:
-                e["project"] = project_name
+                chroma_existing = set(collection.get(where={"commit": commit_hash}, include=[])["ids"])
+            for e in entries: e["project"] = project_name
             chroma_n = push_to_chroma(entries, chroma_existing, collection)
-
         if oracle_api_key and commit_hash not in oracle_indexed:
             oracle_entries = [to_oracle_entry(e) for e in entries]
-            ins, _ = oracle_batch_push(oracle_api_key, oracle_entries, mcp_url)
+            ins, _ = oracle_batch_push(oracle_api_key, oracle_entries, args.mcp_url)
             oracle_n = ins
-
         parts = []
-        if collection is not None:
-            parts.append(f"Chroma={chroma_n}")
-        if oracle_api_key:
-            parts.append(f"Oracle={oracle_n}")
+        if collection is not None: parts.append(f"Chroma={chroma_n}")
+        if oracle_api_key: parts.append(f"Oracle={oracle_n}")
         print(f"[memory] {commit_hash}: {', '.join(parts)} file(s) indexed.")
 
 

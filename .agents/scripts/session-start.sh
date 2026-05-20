@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
 # Hook SessionStart — MCP Memory Management
-#
-# Detects the project stack from build files and injects it as context.
-#
-# Input:  JSON on stdin (ignored — we read the filesystem)
-# Output: JSON on stdout with additionalContext
-
 set -uo pipefail
 cat > /dev/null  # drain stdin
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# ── Setup Validation Gate ──────────────────────────────────────────────────
+VALIDATE_SCRIPT="$ROOT/.agents/scripts/validate-setup.sh"
+if [ -x "$VALIDATE_SCRIPT" ]; then
+  VALIDATION_OUTPUT=$("$VALIDATE_SCRIPT" 2>&1)
+  if [ $? -ne 0 ]; then
+    python3 -c "
+import json, sys
+print(json.dumps({
+    'hookSpecificOutput': {
+        'hookEventName': 'SessionStart',
+        'additionalContext': sys.stdin.read()
+    }
+}))
+" <<< "$VALIDATION_OUTPUT"
+    exit 0
+  fi
+fi
 STACK=""
 
 if [ -f "$ROOT/pom.xml" ]; then
@@ -67,7 +79,6 @@ if [ -f "$CONFIG" ] && [ -f "$SCRIPTS/extract_changes.py" ]; then
   SERVER_URL=$(python3 -c "import json; d=json.load(open('$CONFIG')); print(d.get('serverUrl','http://localhost:8080'))" 2>/dev/null || echo "http://localhost:8080")
   CURRENT_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
 
-  # Create state file on first session after project setup
   if [ ! -f "$MEMORY_STATE" ]; then
     printf '{"initialized":false,"last_indexed_commit":null,"last_indexed_at":null}\n' > "$MEMORY_STATE"
   fi
@@ -89,7 +100,6 @@ PYEOF
   }
 
   if [ "$INITIALIZED" = "false" ] || [ -z "$LAST_HASH" ]; then
-    # Full bootstrap — never indexed or hash is missing
     (cd "$ROOT" && \
       python3 "$SCRIPTS/extract_changes.py" --all --api-key "$API_KEY" --mcp-url "$SERVER_URL" >> "$MEMORY_LOG" 2>&1 \
     ) &

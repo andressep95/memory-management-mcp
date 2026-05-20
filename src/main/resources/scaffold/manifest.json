@@ -1,5 +1,6 @@
 {
-  "version": "1.0",
+  "version": "2026.05.1",
+  "description": "Reference manifest — actual deployment is driven by SetupMcpTools.java patterns",
   "extract": [
     { "from": "rules.md",                          "to": ".agents/rules.md" },
     { "from": "skills/commit/SKILL.md",            "to": ".agents/skills/commit/SKILL.md" },
@@ -12,17 +13,25 @@
   ],
   "mkdirs": [
     ".agents",
+    ".agents/scripts",
     ".agents/skills",
-    ".agents/skills/commit"
+    ".agents/skills/commit",
+    ".claude",
+    ".kiro/hooks",
+    ".kiro/steering"
   ],
   "symlinks": [
     { "link": "CLAUDE.md",                       "target": ".agents/rules.md" },
     { "link": "AGENTS.md",                       "target": ".agents/rules.md" },
     { "link": ".kiro/steering/project-rules.md", "target": "../../.agents/rules.md" },
-    { "link": ".kiro/steering/commit.md",        "target": "../../.agents/skills/commit/SKILL.md" }
+    { "link": ".kiro/skills/commit/SKILL.md",    "target": "../../../.agents/skills/commit/SKILL.md" }
   ],
-  "copy_and_exec": [
+  "gitHooks": [
     { "from": "scripts/post-commit", "to": ".git/hooks/post-commit" }
   ],
-  "gitignore_append": ".agents/config.json\n"
+  "gitignore_append": ".agents/config.json\n",
+  "validation": {
+    "tool": "confirmSetup",
+    "runtimeGate": "scripts/validate-setup.sh"
+  }
 }
