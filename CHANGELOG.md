@@ -6,6 +6,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [7545dd9] — 2026-05-20
+
+**feat(setup): add confirmSetup validation tool with transport note**
+
+> what: Adds SetupValidationMcpTools that verifies blueprint hash and marks setup complete, plus SSE transport guidance in setupProject description
+> why: Agents need a server-side gate to confirm scaffold was applied correctly, and mcp-remote proxy causes hanging responses requiring direct SSE connection
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SetupValidationMcpTools.java`
+- `src/main/resources/scaffold/scripts/validate-setup.sh`
+
+#### Changed
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/McpToolsConfiguration.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/mcp/SetupMcpTools.java`
+
+---
+
+### [0d644cd] — 2026-05-20
+
+**fix(scripts): read apiKey from config.json fallback + unify batch size to 25**
+
+> what: extract_changes.py reads .agents/config.json when --api-key is not provided
+> why: Running the script manually required passing flags that were already in config
+> breaking: false
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `src/main/resources/scaffold/scripts/extract_changes.py`
+
+---
+
+### [dff07b2] — 2026-05-20
+
+**feat(memory): add LLM enrichment pipeline for legacy commits**
+
+> what: Detects commits with poor semantic fields and enriches them via OpenAI API asynchronously
+> why: Legacy commits without intent/what/why produce low-quality embeddings that pollute search results
+> breaking: false
+
+#### Added
+
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/EnrichmentProcessor.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/entity/EnrichmentTask.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/EnrichmentTaskRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/enrichment/EnrichmentLlmClient.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/enrichment/OpenAiEnrichmentClient.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/EnrichmentTaskRepositoryAdapter.java`
+
+#### Changed
+
+- `.gitignore`
+- `docker/oracle/init/01-schema.sql`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/application/memory/BatchIndexMemoryHandler.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/domain/memory/repository/MemoryChangeRepository.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/persistence/memory/MemoryChangeRepositoryAdapter.java`
+- `src/main/java/com/cloudcentinel/memory_management_mcp/infrastructure/rest/MemoryRestController.java`
+- `src/main/resources/application.yaml`
+
+---
+
 ### [7dc8066] — 2026-05-18
 
 **feat(memory): add prompt-guard hook and refine memory indexing**
