@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 CHROMA_BATCH      = 100
-MCP_BATCH_SIZE    = 5          # entries per /api/memory/batch call
+MCP_BATCH_SIZE    = 25         # entries per /api/memory/batch call
 MAX_HUNK_CONTENT  = 8_000
 MAX_HUNK_DIFF     = 4_000      # cap per individual hunk diff lines
 
@@ -403,15 +403,26 @@ def main() -> None:
 
     # ── Oracle setup ──────────────────────────────────────────────────────
     oracle_api_key = args.api_key.strip() or None
+    mcp_url = args.mcp_url
+
+    # Fallback: read from .agents/config.json if args not provided
+    if not oracle_api_key or mcp_url == "http://localhost:8080":
+        config_path = Path(run("git rev-parse --show-toplevel")) / ".agents" / "config.json"
+        if config_path.exists():
+            cfg = json.loads(config_path.read_text())
+            if not oracle_api_key:
+                oracle_api_key = cfg.get("apiKey")
+            if mcp_url == "http://localhost:8080":
+                mcp_url = cfg.get("serverUrl", mcp_url)
+
     if not args.no_oracle and not oracle_api_key:
-        print("[oracle] No --api-key provided — Oracle writes disabled.", file=sys.stderr)
-        print("[oracle] Run: curl -s -X POST http://localhost:8080/api/projects -H 'Content-Type: application/json' -d '{\"name\":\"<project-name>\"}' | jq .apiKey", file=sys.stderr)
+        print("[oracle] No --api-key provided and no .agents/config.json found — Oracle writes disabled.", file=sys.stderr)
 
     # ── Indexed sets for diff ─────────────────────────────────────────────
     oracle_indexed: set[str] = set()
     if oracle_api_key:
         print("[oracle] Fetching already-indexed commits...")
-        oracle_indexed = oracle_get_indexed_commits(oracle_api_key, args.mcp_url)
+        oracle_indexed = oracle_get_indexed_commits(oracle_api_key, mcp_url)
         print(f"[oracle] {len(oracle_indexed)} commits already indexed.")
 
     # ── Process commits ───────────────────────────────────────────────────
@@ -447,14 +458,14 @@ def main() -> None:
             while oracle_api_key and len(oracle_pending) >= MCP_BATCH_SIZE:
                 batch = oracle_pending[:MCP_BATCH_SIZE]
                 del oracle_pending[:MCP_BATCH_SIZE]
-                ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
+                ins, _ = oracle_batch_push(oracle_api_key, batch, mcp_url)
                 oracle_total += ins
 
         # Final Oracle flush — drain any remaining entries
         while oracle_pending and oracle_api_key:
             batch = oracle_pending[:MCP_BATCH_SIZE]
             del oracle_pending[:MCP_BATCH_SIZE]
-            ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
+            ins, _ = oracle_batch_push(oracle_api_key, batch, mcp_url)
             oracle_total += ins
 
         print(f"\n[memory] Done. {total} commits processed.")
@@ -482,7 +493,7 @@ def main() -> None:
 
         if oracle_api_key and commit_hash not in oracle_indexed:
             oracle_entries = [to_oracle_entry(e) for e in entries]
-            ins, _ = oracle_batch_push(oracle_api_key, oracle_entries, args.mcp_url)
+            ins, _ = oracle_batch_push(oracle_api_key, oracle_entries, mcp_url)
             oracle_n = ins
 
         parts = []

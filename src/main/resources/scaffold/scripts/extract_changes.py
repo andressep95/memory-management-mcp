@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 CHROMA_BATCH      = 100
-MCP_BATCH_SIZE    = 10         # entries per /api/memory/batch call
+MCP_BATCH_SIZE    = 25         # entries per /api/memory/batch call
 MAX_HUNK_CONTENT  = 12_000
 
 LANGUAGE_MAP = {
