@@ -35,8 +35,13 @@ Tools exposed via MCP (stdio / http-sse) for agent consumption:
 | `getIndexedCommits` | memory | Returns commit hashes already indexed for a project |
 | `querySkills` | skills | Semantic search over skill chunks enabled for a project |
 | `setupProject` | setup | Initialize agent environment — returns a blueprint to apply |
+| `confirmSetup` | setup | Validates blueprint hash and marks setup as completed |
 
 All MCP tools require a `projectId` (UUID) obtained from project creation.
+
+### Transport
+
+The server exposes MCP over SSE at `/sse`. Clients must connect directly to the SSE endpoint — do **not** use `mcp-remote` as proxy (causes hanging responses). Use native SSE support or streamable-http instead.
 
 ## REST Endpoints
 

@@ -12,6 +12,7 @@
 | `querySkills` | Búsqueda semántica en el catálogo de skills del proyecto | [→ doc](./tools/query-skills.md) |
 | `getIndexedCommits` | Retorna hashes de commits ya indexados | [→ doc](./tools/get-indexed-commits.md) |
 | `setupProject` | Inicializa entorno del agente en un proyecto | [→ doc](./tools/setup-project.md) |
+| `confirmSetup` | Valida hash del blueprint y marca setup como completado | [→ doc](./tools/setup-project.md#confirmsetup) |
 
 ## REST Endpoints
 

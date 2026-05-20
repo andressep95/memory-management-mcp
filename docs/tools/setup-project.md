@@ -129,34 +129,17 @@ flowchart TD
 
 ### Comportamiento
 
-El agente ejecuta checks locales y reporta resultados al server. El server valida:
-1. Que el `configHash` reportado coincida con el que generó
-2. Que todos los checks críticos pasen
-
-Solo si todo pasa → marca `setup_completed_at`.
+El agente pasa el `configHash` (del `.agents/config.json` generado por `setupProject`). El server:
+1. Recalcula el hash esperado desde los scaffold sources
+2. Si coincide → marca `setup_completed_at`
+3. Si no coincide → retorna diagnósticos por archivo
 
 ### Parámetros
 
 | Param | Tipo | Requerido | Descripción |
 |-------|------|-----------|-------------|
 | `apiKey` | String | Sí | API key del proyecto |
-| `checksReport` | Object | Sí | Resultado de validaciones locales del agente |
-
-### `checksReport` Schema
-
-```json
-{
-  "configHash": "sha256:abc123...",
-  "checks": [
-    {"name": "config", "exists": true},
-    {"name": "hooks", "exists": true, "executable": true},
-    {"name": "scripts", "exists": true, "executable": true},
-    {"name": "symlinks", "claude_md": true, "agents_md": true, "steering": true},
-    {"name": "skills", "exists": true},
-    {"name": "memory_state", "exists": true}
-  ]
-}
-```
+| `configHash` | String | Sí | SHA-256 hash de `.agents/config.json` (campo `configHash` dentro del archivo) |
 
 ### Retorno: `SetupValidation`
 
@@ -164,16 +147,19 @@ Solo si todo pasa → marca `setup_completed_at`.
 ```json
 {
   "valid": true,
-  "setupCompletedAt": "2026-05-20T03:00:00Z"
+  "setupCompletedAt": "2026-05-20T08:49:06.736466Z",
+  "failures": []
 }
 ```
 
-**Fallo:**
+**Fallo (hash mismatch):**
 ```json
 {
   "valid": false,
+  "setupCompletedAt": null,
   "failures": [
-    {"name": "hooks", "reason": "not executable", "fix": "chmod +x .git/hooks/post-commit"}
+    {"file": "_overall", "reason": "Blueprint hash mismatch. Expected: abc..., received: def..."},
+    {"file": ".agents/rules.md", "reason": "expected sha256:..."}
   ]
 }
 ```
@@ -182,32 +168,20 @@ Solo si todo pasa → marca `setup_completed_at`.
 
 ```mermaid
 flowchart TD
-    A["confirmSetup(apiKey, checksReport)"] --> B{apiKey válida?}
-    B -->|No| C[Error]
-    B -->|Sí| D{configHash coincide?}
-    D -->|No| E["Retorna {valid: false}<br/>config corrupto o modificado"]
-    D -->|Sí| F{Todos los checks pasan?}
-    F -->|No| G["Retorna {valid: false, failures: [...]}"]
-    F -->|Sí| H[project.markSetupCompleted]
-    H --> I["Retorna {valid: true}"]
+    A["confirmSetup(apiKey, configHash)"] --> B{apiKey válida?}
+    B -->|No| C[Error: Invalid API key]
+    B -->|Sí| D{setup ya completado?}
+    D -->|Sí| E["Retorna {valid: true, setupCompletedAt: ...}"]
+    D -->|No| F[Recalcula hash desde scaffold sources]
+    F --> G{hash coincide?}
+    G -->|No| H["Retorna {valid: false, failures: [...]}"]
+    G -->|Sí| I[project.markSetupCompleted]
+    I --> J["Retorna {valid: true}"]
 ```
 
-### Loop de Reparación
+### Transporte
 
-Si `confirmSetup` retorna `valid: false`, el agente:
-1. Lee `failures[].fix`
-2. Ejecuta cada fix
-3. Vuelve a llamar `confirmSetup`
-
-Máximo 3 intentos. Si no pasa → reporta al usuario.
-
-```mermaid
-flowchart LR
-    A[confirmSetup] -->|valid: false| B[Aplica fixes]
-    B --> A
-    A -->|valid: true| C[Setup completo ✅]
-    A -->|3 fallos| D[Reporta al usuario]
-```
+⚠️ **No usar `mcp-remote` como proxy.** Causa hanging responses. Conectar directamente al SSE endpoint (`/sse`) o usar streamable-http.
 
 ---
 

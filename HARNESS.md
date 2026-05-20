@@ -29,7 +29,7 @@
 | Ingesta | 1 registro por archivo por commit | Chunking inteligente + metadata trimming |
 | Pruning | Ninguno — crece infinitamente | Consolidación temporal (corto/largo plazo) |
 | Contexto Git | Solo `branch` y `author` | Lineage, divergencia, impacto arquitectónico |
-| Setup | Blueprint sin validación | 3 capas: blueprint → confirmSetup → hook runtime gate |
+| Setup | 3 capas: blueprint → confirmSetup → hook runtime gate | 3 capas: blueprint → confirmSetup → hook runtime gate ✅ |
 | Disciplina | Skills manuales | Linters bespoke + invariantes arquitectónicos |
 | Verificación | Ninguna | Agente de verificación + TDD estricto |
 
@@ -45,54 +45,17 @@ Mejoras al proceso de `setupProject` y configuración del entorno del agente.
 
 | # | Mejora | Impacto | Esfuerzo | Estado |
 |---|--------|---------|----------|--------|
-| S1 | **3-Layer Validated Setup** — `setupProject` (blueprint) → `confirmSetup` (server valida) → hook runtime (gate) | 🔴 Crítico | Medio | 🔧 Diseñado |
-| S2 | **Auto-repair Loop** — Hook runtime detecta drift, inyecta fixes, agente repara | 🟠 Alto | Bajo | 🔧 Diseñado |
+| S1 | **3-Layer Validated Setup** — `setupProject` (blueprint) → `confirmSetup` (server valida) → hook runtime (gate) | 🔴 Crítico | Medio | ✅ Implementado |
+| S2 | **Auto-repair Loop** — Hook runtime detecta drift, inyecta fixes, agente repara | 🟠 Alto | Bajo | ✅ Implementado |
 | S3 | **Linters Bespoke** — Invariantes arquitectónicos verificados por código (no por deseos) | 🟡 Medio | Medio | ❌ |
 
-#### S1. 3-Layer Validated Setup
+#### S1. 3-Layer Validated Setup ✅
 
-**Problema:** `setupProject` retornaba un blueprint y marcaba `setup_completed_at` inmediatamente. Si el agente se interrumpía, el server creía que todo estaba listo. Ejemplo real: el `post-commit` hook no se copió y los commits no se indexaban.
+**Implementado.** `setupProject` genera blueprint sin marcar completed. `confirmSetup` valida hash SHA-256 del config y marca `setup_completed_at`. Hook `validate-setup.sh` ejecuta en cada sesión como runtime gate — si detecta drift, inyecta fixes al contexto del agente.
 
-**Problema recursivo:** Si el agente falla en aplicar el blueprint, ¿por qué confiar en que ejecutará un script de validación? La validación no puede depender del agente.
+#### S2. Auto-repair Loop ✅
 
-**Solución — 3 capas independientes:**
-
-| Capa | Quién ejecuta | Qué valida | Si falla |
-|------|---------------|------------|----------|
-| `setupProject` | Server | Genera blueprint, NO marca completed | Agente puede re-llamar |
-| `confirmSetup` | Agente → Server | Hash config + checklist | Server rechaza |
-| Hook `agentSpawn` | **Runtime** (fuera del control del agente) | Filesystem local | Inyecta fixes al contexto |
-
-**Cambios clave:**
-- `setupProject` ya NO marca `setup_completed_at` — es idempotente
-- Nuevo tool `confirmSetup(apiKey, checksReport)` — valida hash + marca completed
-- Nuevo script `validate-setup.sh` — ejecutado por el runtime en cada sesión
-- `applySteps` tipado reemplaza `nextSteps` en prosa
-- `scaffoldVersion` + `configHash` para detectar drift
-
-**Precondiciones:** Todos los MCP tools (`queryMemory`, `querySkills`, etc.) rechazan llamadas si `setup_completed_at` es null.
-
-**Documentación completa:** `docs/tools/setup-project.md`
-
-#### S2. Auto-repair Loop
-
-**Problema:** Archivos se borran, permisos se pierden, symlinks se rompen después del setup inicial.
-
-**Solución:** El hook `agentSpawn` ejecuta `validate-setup.sh` en cada inicio de sesión. Si detecta problemas:
-
-1. Script retorna exit 1 + lista de fixes en stdout
-2. Runtime inyecta el output como contexto obligatorio al agente
-3. Agente ejecuta los fixes
-4. Próxima sesión: hook pasa ✅
-
-```bash
-# validate-setup.sh output cuando falla:
-⚠️ SETUP INCOMPLETE — apply these fixes before continuing:
-- MISSING: .git/hooks/post-commit → fix: cp .agents/scripts/post-commit .git/hooks/post-commit && chmod +x .git/hooks/post-commit
-- MISSING SYMLINK: CLAUDE.md → fix: ln -sf .agents/rules.md CLAUDE.md
-```
-
-**Por qué funciona:** El runtime ejecuta el hook, no el agente. El agente no puede ignorarlo ni saltárselo. Es la misma mecánica que usa Kiro con hooks `preToolUse` que bloquean tools (exit code 2).
+**Implementado.** Hook `session-start.sh` ejecuta `validate-setup.sh` en cada inicio de sesión. Si detecta problemas (exit 1), inyecta la lista de fixes como contexto obligatorio al agente. Valida: config, git hooks, permisos de scripts, symlinks, skills, memory state.
 
 #### S3. Linters Bespoke
 
