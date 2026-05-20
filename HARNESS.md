@@ -295,6 +295,6 @@ En vez de inyectar documentación masiva, el harness indexa y "digiere" capacida
 - **Modelo de embeddings:** `multilingual-e5-small` (384 dims) — alineado entre ingesta y búsqueda ✅
 - **Índices HNSW:** Target accuracy 95%
 - **Batch size:** 25 en Python script, 50 en Java handler (chunks internos)
-- **Oracle es el store autoritativo** — Chroma es opcional/local
+- **Oracle es el store autoritativo**
 - **Limitación:** No hay re-indexación si cambia el modelo de embeddings
 - **Enrichment LLM:** Intercambiable via interface (`OpenAI` → `Ollama` → `Claude`)

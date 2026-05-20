@@ -18,7 +18,6 @@ if [ -f "$SCRIPTS/extract_changes.py" ] && [ -n "$API_KEY" ]; then
   python3 "$SCRIPTS/extract_changes.py" \
     --api-key "$API_KEY" \
     --mcp-url "$SERVER_URL" \
-    --no-chroma \
     2>/dev/null || true
 fi
 

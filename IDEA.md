@@ -7,7 +7,7 @@
 
 ## 1. Visión General
 
-Servidor MCP (Model Context Protocol) autónomo que corre en una ThinkStation local. Provee memoria vectorial, catálogo de skills y trazabilidad de sesiones para agentes de IA (Claude Code). No depende de Python, ChromaDB ni APIs externas. Todo el estado reside en Oracle 23ai; los proyectos cliente solo mantienen hooks ejecutables locales.
+Servidor MCP (Model Context Protocol) autónomo que corre en una ThinkStation local. Provee memoria vectorial, catálogo de skills y trazabilidad de sesiones para agentes de IA (Claude Code). No depende de APIs externas. Todo el estado reside en Oracle 23ai; los proyectos cliente solo mantienen hooks ejecutables locales.
 
 ### Objetivos
 
@@ -143,7 +143,7 @@ Servidor MCP (Model Context Protocol) autónomo que corre en una ThinkStation lo
 |---|---|---|---|
 | `session-start.sh` | `SessionStart` | `check_user_setup` → `detect_stack` → `register_session` | Si primera vez: lanza TUI → `save_user_preferences`. Inyecta stack + reglas al agente como `additionalContext`. |
 | `user-prompt-submit.sh` | `UserPromptSubmit` | `search_skills` → `query_memory` → `get_skill_content` | Inyecta contenido del skill relevante + memoria previa como `additionalContext`. El agente recibe texto directo. |
-| `post-commit.sh` | `PostToolUse` (git commit) | `index_commit` | Extrae diff con `git diff HEAD~1 HEAD`, envía al MCP para indexar en Oracle. Sin ChromaDB ni Python local. |
+| `post-commit.sh` | `PostToolUse` (git commit) | `index_commit` | Extrae diff con `git diff HEAD~1 HEAD`, envía al MCP para indexar en Oracle. |
 | `validate-commit.sh` | `PreToolUse` (git commit) | Ninguna (lógica local) | Valida formato del commit body (`what:` / `why:` / `breaking:`). No requiere MCP. |
 | `post-session.sh` | `PostToolUse` (después de commit) | `close_session` (opcional) | Puede cerrar sesión o mantenerla abierta. Recuerda al agente hacer `/clear`. |
 
@@ -239,5 +239,5 @@ Servidor MCP (Model Context Protocol) autónomo que corre en una ThinkStation lo
 
 > El proyecto usuario mantiene **únicamente** hooks ejecutables y scripts de extracción local.
 > Todo el estado (skills, memoria, preferencias, sesiones) reside en el **MCP Server con Oracle 23ai**.
-> No existe dependencia de ChromaDB, Python para embeddings ni archivos de skills locales en el cliente.
+> No existe dependencia de Python para embeddings ni archivos de skills locales en el cliente.
 > El servidor es autónomo una vez descargados los modelos DJL.

@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 """
-Post-commit extractor — dual-write to ChromaDB + Oracle MCP server.
+Post-commit extractor — pushes commit diffs to Oracle MCP server.
 Granularity: 1 record per file per commit.
+
+Run modes:
+  python3 extract_changes.py              # index HEAD (post-commit hook)
+  python3 extract_changes.py --ref <sha>  # index a specific commit
+  python3 extract_changes.py --all        # replay full git history
 """
-
-import os
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
-
-import warnings
-warnings.filterwarnings("ignore", message=".*unauthenticated.*")
-warnings.filterwarnings("ignore", message=".*HF_TOKEN.*")
 
 import json, re, subprocess, sys
 from pathlib import Path
 
-CHROMA_BATCH = 100
 MCP_BATCH_SIZE = 25
 MAX_HUNK_CONTENT = 12_000
 
@@ -134,6 +129,8 @@ def resolve_branch(ref: str) -> str:
     return main_branch[0] if main_branch else (candidates[0] if candidates else "unknown")
 
 
+# ── Oracle MCP REST helpers ──────────────────────────────────────────────────
+
 def oracle_get_indexed_commits(api_key, base_url) -> set:
     try:
         import urllib.request
@@ -163,6 +160,8 @@ def oracle_batch_push(api_key, entries, base_url) -> tuple:
         print(f"[oracle] Batch push failed: {e}", file=sys.stderr)
         return 0, 0
 
+
+# ── Core commit processing ───────────────────────────────────────────────────
 
 def extract_commit_data(ref, project):
     commit = run(f"git log -1 --format=%h {ref}")
@@ -223,117 +222,61 @@ def to_oracle_entry(e):
     }
 
 
-def push_to_chroma(entries, existing, collection):
-    ids, documents, metadatas = [], [], []
-    for e in entries:
-        rid = f"{e['commit']}:{e['file']}"
-        if rid in existing: continue
-        ids.append(rid)
-        documents.append(e["sdesc"])
-        metadatas.append({
-            "file": e["file"], "file_kind": e["file_kind"],
-            "kind": e.get("memory_kind", "config"), "language": e["language"],
-            "what": e["what"], "why": e["why"], "intent": e["intent"],
-            "commit_type": e["commit_type"], "scope": e["scope"],
-            "change_type": e["change_type"], "commit": e["commit"],
-            "branch": e["branch"], "project": e.get("project", ""),
-            "ts": e["ts"], "author": e["author"],
-            "tags": ",".join(e["tags"]), "hunks_count": len(e["hunks"]),
-            "hunk_content": e["hunk_content"],
-            "breaking": str(e["breaking"]).lower(),
-        })
-    if not ids: return 0
-    for i in range(0, len(ids), CHROMA_BATCH):
-        collection.upsert(ids=ids[i:i+CHROMA_BATCH], documents=documents[i:i+CHROMA_BATCH], metadatas=metadatas[i:i+CHROMA_BATCH])
-    return len(ids)
-
+# ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    import argparse, io, contextlib
+    import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--ref", default="HEAD")
     p.add_argument("--all", action="store_true")
-    p.add_argument("--chroma", default=".agents/memory/chroma")
-    p.add_argument("--collection", default="changes")
     p.add_argument("--mcp-url", default="http://localhost:8080")
     p.add_argument("--api-key", default="")
-    p.add_argument("--no-oracle", action="store_true")
-    p.add_argument("--no-chroma", action="store_true")
     args = p.parse_args()
 
-    collection = None
-    if not args.no_chroma:
-        try:
-            import chromadb
-            from chromadb.utils import embedding_functions
-        except ImportError:
-            print("ERROR: pip install chromadb", file=sys.stderr); sys.exit(1)
-        client = chromadb.PersistentClient(path=args.chroma)
-        with contextlib.redirect_stderr(io.StringIO()):
-            ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="intfloat/multilingual-e5-small")
-        collection = client.get_or_create_collection(name=args.collection, embedding_function=ef, metadata={"hnsw:space": "cosine"})
-
     project_name = Path(run("git rev-parse --show-toplevel")).name
-    oracle_api_key = args.api_key.strip() or None
-    if not args.no_oracle and not oracle_api_key:
-        print("[oracle] No --api-key provided — Oracle writes disabled.", file=sys.stderr)
+    api_key = args.api_key.strip() or None
+    if not api_key:
+        print("[oracle] No --api-key provided — nothing to do.", file=sys.stderr)
+        return
 
-    oracle_indexed = set()
-    if oracle_api_key:
-        print("[oracle] Fetching already-indexed commits...")
-        oracle_indexed = oracle_get_indexed_commits(oracle_api_key, args.mcp_url)
-        print(f"[oracle] {len(oracle_indexed)} commits already indexed.")
+    print("[oracle] Fetching already-indexed commits...")
+    oracle_indexed = oracle_get_indexed_commits(api_key, args.mcp_url)
+    print(f"[oracle] {len(oracle_indexed)} commits already indexed.")
 
     if args.all:
         commits = [c for c in run("git log --reverse --format=%H").splitlines() if c]
         total = len(commits)
-        chroma_total = oracle_total = 0
+        oracle_total = 0
         oracle_pending = []
         for i, full_hash in enumerate(commits, 1):
             short = full_hash[:7]
             print(f"  [{i}/{total}] {short}", end="\r", flush=True)
             commit_hash, entries = extract_commit_data(full_hash, project_name)
             if not entries: continue
-            if collection is not None:
-                chroma_existing = set()
-                if collection.count() > 0:
-                    chroma_existing = set(collection.get(where={"commit": commit_hash}, include=[])["ids"])
-                for e in entries: e["project"] = project_name
-                chroma_total += push_to_chroma(entries, chroma_existing, collection)
-            if oracle_api_key and commit_hash not in oracle_indexed:
+            if commit_hash not in oracle_indexed:
                 oracle_pending.extend(to_oracle_entry(e) for e in entries)
-            while oracle_api_key and len(oracle_pending) >= MCP_BATCH_SIZE:
+            while len(oracle_pending) >= MCP_BATCH_SIZE:
                 batch = oracle_pending[:MCP_BATCH_SIZE]
                 del oracle_pending[:MCP_BATCH_SIZE]
-                ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
+                ins, _ = oracle_batch_push(api_key, batch, args.mcp_url)
                 oracle_total += ins
-        while oracle_pending and oracle_api_key:
+        while oracle_pending:
             batch = oracle_pending[:MCP_BATCH_SIZE]
             del oracle_pending[:MCP_BATCH_SIZE]
-            ins, _ = oracle_batch_push(oracle_api_key, batch, args.mcp_url)
+            ins, _ = oracle_batch_push(api_key, batch, args.mcp_url)
             oracle_total += ins
         print(f"\n[memory] Done. {total} commits processed.")
-        if collection is not None: print(f"  Chroma: {chroma_total} file(s) indexed.")
-        if oracle_api_key: print(f"  Oracle: {oracle_total} file(s) indexed.")
+        print(f"  Oracle: {oracle_total} file(s) indexed.")
     else:
         commit_hash, entries = extract_commit_data(args.ref, project_name)
         if not entries:
             print(f"[memory] No files changed in {commit_hash}."); return
-        chroma_n = oracle_n = 0
-        if collection is not None:
-            chroma_existing = set()
-            if collection.count() > 0:
-                chroma_existing = set(collection.get(where={"commit": commit_hash}, include=[])["ids"])
-            for e in entries: e["project"] = project_name
-            chroma_n = push_to_chroma(entries, chroma_existing, collection)
-        if oracle_api_key and commit_hash not in oracle_indexed:
+        oracle_n = 0
+        if commit_hash not in oracle_indexed:
             oracle_entries = [to_oracle_entry(e) for e in entries]
-            ins, _ = oracle_batch_push(oracle_api_key, oracle_entries, args.mcp_url)
+            ins, _ = oracle_batch_push(api_key, oracle_entries, args.mcp_url)
             oracle_n = ins
-        parts = []
-        if collection is not None: parts.append(f"Chroma={chroma_n}")
-        if oracle_api_key: parts.append(f"Oracle={oracle_n}")
-        print(f"[memory] {commit_hash}: {', '.join(parts)} file(s) indexed.")
+        print(f"[memory] {commit_hash}: Oracle={oracle_n} file(s) indexed.")
 
 
 if __name__ == "__main__":
