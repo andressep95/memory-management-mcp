@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### [3642534] — 2026-05-20
+
+**refactor(memory): remove all ChromaDB references and code**
+
+> what: Eliminates Chroma dual-write from extract_changes.py and removes mentions from docs
+> why: Oracle 23ai is the sole vector store — Chroma was deprecated and no longer used
+> breaking: false
+
+#### Changed
+
+- `.agents/scripts/extract_changes.py`
+- `.agents/scripts/post-commit`
+- `HARNESS.md`
+- `IDEA.md`
+- `src/main/resources/scaffold/scripts/extract_changes.py`
+
+---
+
 ### [7545dd9] — 2026-05-20
 
 **feat(setup): add confirmSetup validation tool with transport note**
